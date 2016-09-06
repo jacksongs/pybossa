@@ -7,3 +7,6 @@
 [submodule "doc/_themes/sphinx-theme-pybossa"]
 	path = doc/_themes/sphinx-theme-pybossa
 	url = https://github.com/PyBossa/sphinx-theme-pybossa.git
+[submodule "pybossa/themes/aphlife"]
+	path = pybossa/themes/aphlife
+	url = https://github.com/jacksongs/libcrowds-pybossa-theme
