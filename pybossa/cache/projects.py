@@ -1,20 +1,20 @@
 # -*- coding: utf8 -*-
-# This file is part of PyBossa.
+# This file is part of PYBOSSA.
 #
-# Copyright (C) 2015 SciFabric LTD.
+# Copyright (C) 2015 Scifabric LTD.
 #
-# PyBossa is free software: you can redistribute it and/or modify
+# PYBOSSA is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as published by
 # the Free Software Foundation, either version 3 of the License, or
 # (at your option) any later version.
 #
-# PyBossa is distributed in the hope that it will be useful,
+# PYBOSSA is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU Affero General Public License for more details.
 #
 # You should have received a copy of the GNU Affero General Public License
-# along with PyBossa.  If not, see <http://www.gnu.org/licenses/>.
+# along with PYBOSSA.  If not, see <http://www.gnu.org/licenses/>.
 """Cache module for projects."""
 from sqlalchemy.sql import text
 from pybossa.core import db, timeouts
@@ -53,7 +53,8 @@ def get_top(n=4):
                        info=row.info,
                        n_volunteers=n_volunteers(row.id),
                        n_completed_tasks=n_completed_tasks(row.id))
-        top_projects.append(project)
+
+        top_projects.append(Project().to_public_json(project))
     return top_projects
 
 
@@ -259,7 +260,7 @@ def get_all_featured(category=None):
                        n_tasks=n_tasks(row.id),
                        n_volunteers=n_volunteers(row.id),
                        info=row.info)
-        projects.append(project)
+        projects.append(Project().to_public_json(project))
     return projects
 
 
@@ -319,7 +320,7 @@ def get_all_draft(category=None):
                        n_tasks=n_tasks(row.id),
                        n_volunteers=n_volunteers(row.id),
                        info=row.info)
-        projects.append(project)
+        projects.append(Project().to_public_json(project))
     return projects
 
 
@@ -388,7 +389,7 @@ def get_all(category):
                        n_tasks=n_tasks(row.id),
                        n_volunteers=n_volunteers(row.id),
                        info=row.info)
-        projects.append(project)
+        projects.append(Project().to_public_json(project))
     return projects
 
 

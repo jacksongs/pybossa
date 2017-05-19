@@ -1,31 +1,33 @@
 # -*- coding: utf8 -*-
-# This file is part of PyBossa.
+# This file is part of PYBOSSA.
 #
 # Copyright (C) 2015 SF Isle of Man Limited
 #
-# PyBossa is free software: you can redistribute it and/or modify
+# PYBOSSA is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as published by
 # the Free Software Foundation, either version 3 of the License, or
 # (at your option) any later version.
 #
-# PyBossa is distributed in the hope that it will be useful,
+# PYBOSSA is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU Affero General Public License for more details.
 #
 # You should have received a copy of the GNU Affero General Public License
-# along with PyBossa.  If not, see <http://www.gnu.org/licenses/>.
+# along with PYBOSSA.  If not, see <http://www.gnu.org/licenses/>.
 from mock import patch
 
 from default import db
 from factories import ProjectFactory, TaskFactory, UserFactory, TaskRunFactory
 from helper import web
-from pybossa.repositories import UserRepository, ProjectRepository, TaskRepository
+from pybossa.repositories import UserRepository, ProjectRepository, TaskRepository, WebhookRepository, ResultRepository
 from pybossa.view.projects import render_template
 
 project_repo = ProjectRepository(db)
 task_repo = TaskRepository(db)
 user_repo = UserRepository(db)
+webhook_repo = WebhookRepository(db)
+result_repo = ResultRepository(db)
 
 
 class TestProjectPublicationView(web.Helper):
@@ -69,17 +71,26 @@ class TestProjectPublicationView(web.Helper):
         assert resp.status_code == 200, resp.status_code
         assert project.published == True, project
 
+    @patch('pybossa.view.projects.webhook_repo.delete_entries_from_project')
+    @patch('pybossa.view.projects.result_repo.delete_results_from_project')
     @patch('pybossa.view.projects.task_repo')
-    def test_it_deletes_project_taskruns_before_publishing(self, task_repo):
-        task = TaskFactory.create(project=self.project)
+    def test_it_deletes_project_taskruns_before_publishing(self, mock_task_repo,
+                                                           mock_result_repo,
+                                                           mock_webhook_repo):
+        task = TaskFactory.create(project=self.project, n_answers=1)
         TaskRunFactory.create(task=task)
+        result = result_repo.get_by(project_id=task.project_id)
+        assert result, "There should be a result"
         resp = self.app.post('/project/%s/publish' % self.project.short_name,
                              follow_redirects=True)
 
         taskruns = task_repo.filter_task_runs_by(project_id=self.project.id)
 
-        repo_call = task_repo.delete_taskruns_from_project.call_args_list[0][0][0]
+        repo_call = mock_task_repo.delete_taskruns_from_project.call_args_list[0][0][0]
         assert repo_call.id == self.project.id, repo_call
+
+        mock_webhook_repo.assert_called_with(self.project)
+        mock_result_repo.assert_called_with(self.project)
 
     @patch('pybossa.view.projects.auditlogger')
     def test_it_logs_the_event_in_auditlog(self, fake_logger):

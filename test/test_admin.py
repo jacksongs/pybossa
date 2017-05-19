@@ -1,20 +1,20 @@
 # -*- coding: utf8 -*-
-# This file is part of PyBossa.
+# This file is part of PYBOSSA.
 #
-# Copyright (C) 2015 SciFabric LTD.
+# Copyright (C) 2015 Scifabric LTD.
 #
-# PyBossa is free software: you can redistribute it and/or modify
+# PYBOSSA is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as published by
 # the Free Software Foundation, either version 3 of the License, or
 # (at your option) any later version.
 #
-# PyBossa is distributed in the hope that it will be useful,
+# PYBOSSA is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU Affero General Public License for more details.
 #
 # You should have received a copy of the GNU Affero General Public License
-# along with PyBossa.  If not, see <http://www.gnu.org/licenses/>.
+# along with PYBOSSA.  If not, see <http://www.gnu.org/licenses/>.
 
 import json
 from helper import web
@@ -64,12 +64,34 @@ class TestAdmin(web.Helper):
         sentinel_mock.assert_called_with(key)
 
     @with_context
+    @patch('pybossa.view.admin.sentinel.master.delete')
+    def test_01_admin_index_json(self, sentinel_mock):
+        """Test ADMIN JSON index page works"""
+        self.register()
+        res = self.app_get_json("/admin/")
+        data = json.loads(res.data)
+        err_msg = "There should be an index page for admin users and projects"
+        assert data.get('template') == '/admin/index.html'
+        key = "notify:admin:1"
+        sentinel_mock.assert_called_with(key)
+
+
+    @with_context
     def test_01_admin_index_anonymous(self):
         """Test ADMIN index page works as anonymous user"""
         res = self.app.get("/admin", follow_redirects=True)
         err_msg = ("The user should not be able to access this page"
                    " but the returned status is %s" % res.data)
         assert "Please sign in to access this page" in res.data, err_msg
+
+    @with_context
+    def test_01_admin_index_anonymous_json(self):
+        """Test ADMIN JSON index page works as anonymous user"""
+        res = self.app_get_json("/admin/", follow_redirects=True)
+        err_msg = ("The user should not be able to access this page"
+                   " but the returned status is %s" % res.data)
+        assert "Please sign in to access this page" in res.data, err_msg
+
 
     @with_context
     def test_01_admin_index_authenticated(self):
@@ -82,6 +104,21 @@ class TestAdmin(web.Helper):
         err_msg = ("The user should not be able to access this page"
                    " but the returned status is %s" % res.status)
         assert "403 FORBIDDEN" in res.status, err_msg
+
+    @with_context
+    def test_01_admin_index_authenticated_json(self):
+        """Test ADMIN JSON index page works as signed in user"""
+        self.register()
+        self.signout()
+        self.register(name="tester2", email="tester2@tester.com",
+                      password="tester")
+        res = self.app_get_json("/admin/")
+        data = json.loads(res.data)
+        err_msg = ("The user should not be able to access this page"
+                   " but the returned status is %s" % res.status)
+        assert "403 FORBIDDEN" in res.status, err_msg
+        assert data.get('code') == 403, err_msg
+
 
     @with_context
     def test_02_second_user_is_not_admin(self):
@@ -103,10 +140,33 @@ class TestAdmin(web.Helper):
         assert "Manage featured projects" in res.data, res.data
 
     @with_context
+    def test_03_2_admin_featured_apps_as_admin_json(self):
+        """Test ADMIN featured projects works as an admin user json"""
+        self.register()
+        self.signin()
+        res = self.app_get_json('/admin/featured')
+        data = json.loads(res.data)
+        assert 'categories' in data, data
+        assert 'projects' in data, data
+        err_msg = 'template wrong'
+        assert data['template'] == '/admin/projects.html', err_msg
+        assert 'form' in data, data
+        assert 'csrf' in data['form'], data
+
+    @with_context
     def test_04_admin_featured_apps_as_anonymous(self):
         """Test ADMIN featured projects works as an anonymous user"""
         res = self.app.get('/admin/featured', follow_redirects=True)
         assert "Please sign in to access this page" in res.data, res.data
+
+    @with_context
+    def test_04_2_admin_featured_apps_as_anonymous_json(self):
+        """Test ADMIN featured projects works as an anonymous user json"""
+        res = self.app_get_json('/admin/featured')
+        assert res.status_code == 302, res.status_code
+        err_msg = 'private information leaked'
+        assert 'categories' not in res.data, err_msg
+        assert 'projects' not in res.data, err_msg
 
     @with_context
     def test_05_admin_featured_apps_as_user(self):
@@ -119,15 +179,35 @@ class TestAdmin(web.Helper):
         assert res.status == "403 FORBIDDEN", res.status
 
     @with_context
+    def test_05_2_admin_featured_apps_as_user_json(self):
+        """Test ADMIN featured projects works as a signed in user json"""
+        self.register()
+        self.signout()
+        self.register(name="tester2", email="tester2@tester.com",
+                      password="tester")
+        res = self.app_get_json('/admin/featured')
+        assert res.status == "403 FORBIDDEN", res.status
+        err_msg = 'private information leaked'
+        assert 'categories' not in res.data, err_msg
+        assert 'projects' not in res.data, err_msg
+
+    @with_context
     @patch('pybossa.core.uploader.upload_file', return_value=True)
-    def test_06_admin_featured_apps_add_remove_app(self, mock):
+    @patch('pybossa.forms.validator.requests.get')
+    def test_06_admin_featured_apps_add_remove_app(self, mock, mock_webhook):
         """Test ADMIN featured projects add-remove works as an admin user"""
+        html_request = FakeRequest(json.dumps(self.pkg_json_not_found), 200,
+                                   {'content-type': 'application/json'})
+        mock_webhook.return_value = html_request
+
         self.register()
         self.new_project()
         project = db.session.query(Project).first()
+        print project
         project.published = True
         db.session.commit()
         self.update_project()
+
         # The project is in the system but not in the front page
         res = self.app.get('/', follow_redirects=True)
         assert "Sample Project" not in res.data,\
@@ -142,6 +222,8 @@ class TestAdmin(web.Helper):
         res = self.app.get('/admin/featured', follow_redirects=True)
         assert "Featured" in res.data, res.data
         assert "Sample Project" in res.data, res.data
+
+
         # Add it to the Featured list
         res = self.app.post('/admin/featured/1')
         f = json.loads(res.data)
@@ -247,6 +329,19 @@ class TestAdmin(web.Helper):
         assert "Manage Admin Users" in res.data, res.data
 
     @with_context
+    def test_09_admin_users_as_admin_json(self):
+        """Test ADMIN JSON users works as an admin user"""
+        self.register()
+        res = self.app_get_json('/admin/users')
+        data = json.loads(res.data)
+        assert data.get('form') is not None, data
+        assert data.get('form').get('csrf') is not None, data
+        # See next test
+        assert data.get('users') == [], data
+        assert data.get('found') == [], data
+
+
+    @with_context
     def test_10_admin_user_not_listed(self):
         """Test ADMIN users does not list himself works"""
         self.register()
@@ -266,40 +361,100 @@ class TestAdmin(web.Helper):
         assert "John" not in res.data, res.data
 
     @with_context
-    def test_12_admin_user_search(self):
-        """Test ADMIN users search works"""
-        # Create two users
+    def test_11_admin_user_not_listed_in_search_json(self):
+        """Test ADMIN JSON users does not list himself in the search works"""
+        self.register()
+        data = {'user': 'john'}
+        res = self.app_post_json('/admin/users', data=data)
+        dat = json.loads(res.data)
+        assert dat.get('found') == [], dat
+
+
+    @with_context
+    def test_12_admin_user_search_json(self):
+        """test ADMIN JSON users search works"""
+        # create two users
         self.register()
         self.signout()
-        self.register(fullname="Juan Jose", name="juan",
+        self.register(fullname="juan jose", name="juan",
                       email="juan@juan.com", password="juan")
         self.signout()
-        # Signin with admin user
+        # signin with admin user
+        self.signin()
+        data = {'user': 'juan'}
+        res = self.app_post_json('/admin/users', data=data)
+        dat = json.loads(res.data)
+        assert len(dat.get('found')) == 1, dat
+        assert "juan jose" in dat.get('found')[0].get('fullname'), "username should be searchable"
+        # check with uppercase
+        data = {'user': 'juan'}
+        res = self.app_post_json('/admin/users', data=data)
+        err_msg = "username search should be case insensitive"
+        dat = json.loads(res.data)
+        assert len(dat.get('found')) == 1, dat
+        assert "juan jose" in dat.get('found')[0].get('fullname'), err_msg
+        # search fullname
+        data = {'user': 'jose'}
+        res = self.app_post_json('/admin/users', data=data)
+        dat = json.loads(res.data)
+        assert len(dat.get('found')) == 1, dat
+        assert "juan jose" in dat.get('found')[0].get('fullname'), "fullname should be searchable"
+        # check with uppercase
+        data = {'user': 'jose'}
+        res = self.app_post_json('/admin/users', data=data)
+        dat = json.loads(res.data)
+        assert len(dat.get('found')) == 1, dat
+        err_msg = "fullname search should be case insensitive"
+        assert "juan jose" in dat.get('found')[0].get('fullname'), err_msg
+        # warning should be issued for non-found users
+        data = {'user': 'nothingexists'}
+        res = self.app_post_json('/admin/users', data=data)
+        warning = ("We didn't find")
+        err_msg = "a flash message should be returned for non-found users"
+        dat = json.loads(res.data)
+        assert warning in dat.get('flash'), (err_msg, dat)
+        assert dat.get('status') == 'message', dat
+
+
+
+    @with_context
+    def test_12_admin_user_search(self):
+        """test admin users search works"""
+        # create two users
+        self.register()
+        self.signout()
+        self.register(fullname="juan jose", name="juan",
+                      email="juan@juan.com", password="juan")
+        self.signout()
+        # signin with admin user
         self.signin()
         data = {'user': 'juan'}
         res = self.app.post('/admin/users', data=data, follow_redirects=True)
-        assert "Juan Jose" in res.data, "username should be searchable"
-        # Check with uppercase
-        data = {'user': 'JUAN'}
+        print res.data
+        assert "juan jose" in res.data, "username should be searchable"
+        # check with uppercase
+        data = {'user': 'juan'}
         res = self.app.post('/admin/users', data=data, follow_redirects=True)
         err_msg = "username search should be case insensitive"
-        assert "Juan Jose" in res.data, err_msg
-        # Search fullname
-        data = {'user': 'Jose'}
+        assert "juan jose" in res.data, err_msg
+        # search fullname
+        data = {'user': 'jose'}
         res = self.app.post('/admin/users', data=data, follow_redirects=True)
-        assert "Juan Jose" in res.data, "fullname should be searchable"
-        # Check with uppercase
-        data = {'user': 'JOsE'}
+        assert "juan jose" in res.data, "fullname should be searchable"
+        # check with uppercase
+        data = {'user': 'jose'}
         res = self.app.post('/admin/users', data=data, follow_redirects=True)
         err_msg = "fullname search should be case insensitive"
-        assert "Juan Jose" in res.data, err_msg
-        # Warning should be issued for non-found users
-        data = {'user': 'nothingExists'}
-        res = self.app.post('/admin/users', data=data, follow_redirects=True)
-        warning = ("We didn't find a user matching your query: <strong>%s</strong>" %
-                   data['user'])
-        err_msg = "A flash message should be returned for non-found users"
-        assert warning in res.data, err_msg
+        assert "juan jose" in res.data, err_msg
+        # warning should be issued for non-found users
+        # TODO: Update theme to use pybossaNotify and test this.
+        # TODO: This however is tested in the json endpoint.
+        # data = {'user': 'nothingexists'}
+        # res = self.app.post('/admin/users', data=data, follow_redirects=True)
+        # warning = ("We didn't find a user matching your query: <strong>%s</strong>" %
+        #            data['user'])
+        # err_msg = "a flash message should be returned for non-found users"
+        # assert warning in res.data, err_msg
 
     @with_context
     def test_13_admin_user_add_del(self):
@@ -334,6 +489,42 @@ class TestAdmin(web.Helper):
         assert res.status_code == 404, res.status_code
         assert err['error'] == "User.id not found", err
         assert err['status_code'] == 404, err
+
+    @with_context
+    def test_13_admin_user_add_del_json(self):
+        """Test ADMIN JSON add/del user to admin group works"""
+        self.register()
+        self.signout()
+        self.register(fullname="Juan Jose", name="juan",
+                      email="juan@juan.com", password="juan")
+        self.signout()
+        # Signin with admin user
+        self.signin()
+        # Add user.id=1000 (it does not exist)
+        res = self.app_get_json("/admin/users/add/1000")
+        err = json.loads(res.data)
+        assert res.status_code == 404, res.status_code
+        assert err['error'] == "User not found", err
+        assert err['status_code'] == 404, err
+
+        # Add user.id=2 to admin group
+        res = self.app_get_json("/admin/users/add/2")
+        res = self.app_get_json("/admin/users")
+        err_msg = "User.id=2 should be listed as an admin"
+        data = json.loads(res.data)
+        assert data['users'][0]['id'] == 2, data
+        # Remove user.id=2 from admin group
+        res = self.app_get_json("/admin/users/del/2", follow_redirects=True)
+        res = self.app_get_json("/admin/users")
+        data = json.loads(res.data)
+        assert len(data['users']) == 0, data
+        # Delete a non existant user should return an error
+        res = self.app_get_json("/admin/users/del/5000")
+        err = json.loads(res.data)
+        assert res.status_code == 404, res.status_code
+        assert err['error'] == "User.id not found", err
+        assert err['status_code'] == 404, err
+
 
     @with_context
     def test_14_admin_user_add_del_anonymous(self):
@@ -561,6 +752,39 @@ class TestAdmin(web.Helper):
         assert dom.find(id='categories') is not None, err_msg
 
     @with_context
+    def test_22_admin_list_categories_json(self):
+        """Test ADMIN JSON list categories works"""
+        self.create()
+        # Anonymous user
+        url = '/admin/categories'
+        res = self.app_get_json(url, follow_redirects=True)
+        dom = BeautifulSoup(res.data)
+        err_msg = "Anonymous users should be redirected to sign in"
+        assert dom.find(id='signin') is not None, err_msg
+
+        # Authenticated user but not admin
+        self.signin(email=self.email_addr2, password=self.password)
+        res = self.app_get_json(url)
+        data = json.loads(res.data)
+        err_msg = "Non-Admin users should get 403"
+        assert res.status_code == 403, err_msg
+        assert data.get('code') == 403, err_msg
+        self.signout()
+
+        # Admin user
+        self.signin(email=self.root_addr, password=self.root_password)
+        res = self.app_get_json(url)
+        data = json.loads(res.data)
+        err_msg = "Admin users should be get a list of Categories"
+        assert data.get('categories') is not None, err_msg
+        assert data.get('template') == 'admin/categories.html', err_msg
+        assert data.get('form') is not None, err_msg
+        assert data.get('form').get('csrf') is not None, err_msg
+        assert data.get('n_projects_per_category') is not None, err_msg
+        assert data.get('n_projects_per_category').get('thinking') == 1, err_msg
+
+
+    @with_context
     def test_23_admin_add_category(self):
         """Test ADMIN add category works"""
         self.create()
@@ -591,6 +815,114 @@ class TestAdmin(web.Helper):
         res = self.app.post(url, data=category, follow_redirects=True)
         err_msg = "Category form validation should work"
         assert "Please correct the errors" in res.data, err_msg
+
+    @with_context
+    def test_23_admin_add_category_json(self):
+        """Test ADMIN JSON add category works"""
+        self.create()
+        category = {'name': 'cat', 'short_name': 'cat',
+                    'description': 'description', 'id': ""}
+        # Anonymous user
+        url = '/admin/categories'
+        res = self.app_post_json(url, data=category, follow_redirects=True)
+        dom = BeautifulSoup(res.data)
+        err_msg = "Anonymous users should be redirected to sign in"
+        assert dom.find(id='signin') is not None, err_msg
+
+        # Authenticated user but not admin
+        self.signin(email=self.email_addr2, password=self.password)
+        res = self.app_post_json(url, data=category, follow_redirects=True)
+        err_msg = "Non-Admin users should get 403"
+        data = json.loads(res.data)
+        assert res.status_code == 403, err_msg
+        assert data.get('code') == 403, err_msg
+        self.signout()
+
+        # Admin
+        self.signin(email=self.root_addr, password=self.root_password)
+        res = self.app_post_json(url, data=category)
+        err_msg = "Category should be added"
+        data = json.loads(res.data)
+        assert "Category added" in data.get('flash'), err_msg
+        assert data.get('status') == 'success', err_msg
+        assert category['name'] in data.get('n_projects_per_category').keys(), err_msg
+
+        # Create the same category again should fail
+        res = self.app_post_json(url, data=category)
+        err_msg = "Category form validation should work"
+        data = json.loads(res.data)
+        assert "Please correct the errors" in data.get('flash'), err_msg
+        assert data.get('status') == 'error', err_msg
+        assert len(data.get('form').get('errors').get('name')) == 1, err_msg
+
+    @with_context
+    def test_24_admin_update_category_json(self):
+        """Test ADMIN JSON update category works"""
+        self.create()
+        obj = db.session.query(Category).get(1)
+        _name = obj.name
+        category = obj.dictize()
+
+        # Anonymous user GET
+        url = '/admin/categories/update/%s' % obj.id
+        res = self.app_get_json(url, follow_redirects=True)
+        dom = BeautifulSoup(res.data)
+        err_msg = "Anonymous users should be redirected to sign in"
+        assert dom.find(id='signin') is not None, err_msg
+        # Anonymous user POST
+        res = self.app_post_json(url, data=category, follow_redirects=True)
+        dom = BeautifulSoup(res.data)
+        err_msg = "Anonymous users should be redirected to sign in"
+        assert dom.find(id='signin') is not None, err_msg
+
+        # Authenticated user but not admin GET
+        self.signin(email=self.email_addr2, password=self.password)
+        res = self.app_post_json(url, follow_redirects=True)
+        data = json.loads(res.data)
+        err_msg = "Non-Admin users should get 403"
+        assert res.status_code == 403, err_msg
+        assert data.get('code') == 403, err_msg
+        # Authenticated user but not admin POST
+        res = self.app_post_json(url, data=category, follow_redirects=True)
+        err_msg = "Non-Admin users should get 403"
+        data = json.loads(res.data)
+        assert res.status_code == 403, err_msg
+        assert data.get('code') == 403, err_msg
+        self.signout()
+
+        # Admin GET
+        self.signin(email=self.root_addr, password=self.root_password)
+        res = self.app_get_json(url)
+        data = json.loads(res.data)
+        err_msg = "Category should be listed for admin user"
+        assert data.get('category').get('name') == _name, err_msg
+        assert data.get('form') is not None, data
+        assert data.get('form').get('csrf') is not None, data
+        # Check 404
+        url_404 = '/admin/categories/update/5000'
+        res = self.app_get_json(url_404, follow_redirects=True)
+        data = json.loads(res.data)
+        assert res.status_code == 404, res.status_code
+        assert data.get('code') == 404, data
+        # Admin POST
+        res = self.app_post_json(url, data=category)
+        err_msg = "Category should be updated"
+        data = json.loads(res.data)
+        assert "Category updated" in data.get('flash'), err_msg
+        assert data.get('status') == 'success', err_msg
+        res = self.app_get_json(url)
+        data = json.loads(res.data)
+        assert category['name'] == data.get('category').get('name'), err_msg
+        updated_category = db.session.query(Category).get(obj.id)
+        assert updated_category.name == obj.name, err_msg
+        # With not valid form
+        category['name'] = None
+        res = self.app_post_json(url, data=category)
+        data = json.loads(res.data)
+        assert "Please correct the errors" in data.get('flash'), err_msg
+        assert data.get('form').get('errors') is not None, data
+        assert len(data.get('form').get('errors').get('name')) ==1, data
+
 
     @with_context
     def test_24_admin_update_category(self):
@@ -643,6 +975,77 @@ class TestAdmin(web.Helper):
         category['name'] = None
         res = self.app.post(url, data=category, follow_redirects=True)
         assert "Please correct the errors" in res.data, err_msg
+
+    @with_context
+    def test_25_admin_delete_category_json(self):
+        """Test ADMIN JSON delete category works"""
+        self.create()
+        obj = db.session.query(Category).get(2)
+        category = obj.dictize()
+
+        # Anonymous user GET
+        url = '/admin/categories/del/%s' % obj.id
+        res = self.app_get_json(url, follow_redirects=True)
+        dom = BeautifulSoup(res.data)
+        err_msg = "Anonymous users should be redirected to sign in"
+        assert dom.find(id='signin') is not None, err_msg
+        # Anonymous user POST
+        res = self.app_post_json(url, data=category, follow_redirects=True)
+        dom = BeautifulSoup(res.data)
+        err_msg = "Anonymous users should be redirected to sign in"
+        assert dom.find(id='signin') is not None, err_msg
+
+        # Authenticated user but not admin GET
+        self.signin(email=self.email_addr2, password=self.password)
+        res = self.app_post_json(url, follow_redirects=True)
+        data = json.loads(res.data)
+        err_msg = "Non-Admin users should get 403"
+        assert res.status_code == 403, err_msg
+        assert data.get('code') == 403, err_msg
+        # Authenticated user but not admin POST
+        res = self.app_post_json(url, data=category)
+        err_msg = "Non-Admin users should get 403"
+        data = json.loads(res.data)
+        assert res.status_code == 403, err_msg
+        assert data.get('code') == 403, err_msg
+        self.signout()
+
+        self.signin(email=self.root_addr, password=self.root_password)
+        res = self.app_get_json(url)
+        data = json.loads(res.data)
+        assert data.get('form') is not None, data
+        assert data.get('form').get('csrf') is not None, data
+        assert data.get('category') is not None, data
+        assert data.get('category').get('id') == category['id'], data
+        # Admin POST
+        res = self.app_post_json(url, data=category)
+        data = json.loads(res.data)
+        err_msg = "Category should be deleted"
+        assert "Category deleted" in data.get('flash'), (err_msg, data)
+        assert data.get('status') == 'success', err_msg
+        output = db.session.query(Category).get(obj.id)
+        assert output is None, err_msg
+        # Non existant category
+        category['id'] = 5000
+        url = '/admin/categories/del/5000'
+        res = self.app_post_json(url, data=category)
+        data = json.loads(res.data)
+        assert res.status_code == 404, res.status_code
+        assert data.get('code') == 404, data
+
+        # Now try to delete the only available Category
+        obj = db.session.query(Category).first()
+        url = '/admin/categories/del/%s' % obj.id
+        category = obj.dictize()
+        res = self.app_post_json(url, data=category)
+        print res.data
+        data = json.loads(res.data)
+        err_msg = "Category should not be deleted"
+        assert "Sorry" in data.get('flash'), data
+        assert data.get('status') == 'warning', data
+        output = db.session.query(Category).get(obj.id)
+        assert output.id == category['id'], err_msg
+
 
     @with_context
     def test_25_admin_delete_category(self):
@@ -713,6 +1116,15 @@ class TestAdmin(web.Helper):
         assert "Sign in" in res.data, err_msg
 
     @with_context
+    def test_admin_dashboard_json(self):
+        """Test ADMIN JSON dashboard requires admin"""
+        url = '/admin/dashboard/'
+        res = self.app_get_json(url, follow_redirects=True)
+        err_msg = "It should require login"
+        assert "Sign in" in res.data, err_msg
+
+
+    @with_context
     def test_admin_dashboard_auth_user(self):
         """Test ADMIN dashboard requires admin"""
         url = '/admin/dashboard/'
@@ -724,6 +1136,20 @@ class TestAdmin(web.Helper):
         assert res.status_code == 403, err_msg
 
     @with_context
+    def test_admin_dashboard_auth_user_json(self):
+        """Test ADMIN JSON dashboard requires admin"""
+        url = '/admin/dashboard/'
+        self.register()
+        self.signout()
+        self.register(fullname="juan", name="juan")
+        res = self.app_get_json(url)
+        err_msg = "It should return 403"
+        assert res.status_code == 403, err_msg
+        data = json.loads(res.data)
+        assert data.get('code') == 403, err_msg
+
+
+    @with_context
     def test_admin_dashboard_admin_user(self):
         """Test ADMIN dashboard admins can access it"""
         url = '/admin/dashboard/'
@@ -733,6 +1159,49 @@ class TestAdmin(web.Helper):
         err_msg = "It should return 200"
         assert res.status_code == 200, err_msg
         assert "No data" in res.data, res.data
+
+    @with_context
+    def test_admin_dashboard_admin_user_json(self):
+        """Test ADMIN JSON dashboard admins can access it"""
+        url = '/admin/dashboard/'
+        self.register()
+        self.new_project()
+        res = self.app_get_json(url)
+        print res.data
+        err_msg = "It should return 200"
+        data = json.loads(res.data)
+        assert res.status_code == 200, err_msg
+        assert data.get('wait') == True, data
+
+    @with_context
+    def test_admin_dashboard_admin_user_data_json(self):
+        """Test ADMIN JSON dashboard admins can access it with data"""
+        url = '/admin/dashboard/'
+        self.register()
+        self.new_project()
+        self.new_task(1)
+        import pybossa.dashboard.jobs as dashboard
+        dashboard.active_anon_week()
+        dashboard.active_users_week()
+        dashboard.new_users_week()
+        dashboard.new_tasks_week()
+        dashboard.new_task_runs_week()
+        dashboard.draft_projects_week()
+        dashboard.published_projects_week()
+        dashboard.update_projects_week()
+        dashboard.returning_users_week()
+        res = self.app_get_json(url)
+        data = json.loads(res.data)
+        err_msg = "It should return 200"
+        assert res.status_code == 200, err_msg
+        keys = ['active_anon_last_week', 'published_projects_last_week',
+                'new_tasks_week', 'title', 'update_feed',
+                'draft_projects_last_week', 'update_projects_last_week',
+                'new_users_week', 'template', 'new_task_runs_week',
+                'returning_users_week', 'active_users_last_week', 'wait']
+        for key in keys:
+            assert key in data.keys(), data
+
 
     @with_context
     def test_admin_dashboard_admin_user_data(self):
@@ -781,3 +1250,35 @@ class TestAdmin(web.Helper):
         assert "No data" not in res.data, res.data
         assert "New Users" in res.data, res.data
         assert mock.enqueue.called
+
+    @with_context
+    @patch('pybossa.view.admin.DASHBOARD_QUEUE')
+    def test_admin_dashboard_admin_refresh_user_data_json(self, mock):
+        """Test ADMIN JSON dashboard admins refresh can access it with data"""
+        url = '/admin/dashboard/?refresh=1'
+        self.register()
+        self.new_project()
+        self.new_task(1)
+        import pybossa.dashboard.jobs as dashboard
+        dashboard.active_anon_week()
+        dashboard.active_users_week()
+        dashboard.new_users_week()
+        dashboard.new_tasks_week()
+        dashboard.new_task_runs_week()
+        dashboard.draft_projects_week()
+        dashboard.published_projects_week()
+        dashboard.update_projects_week()
+        dashboard.returning_users_week()
+        res = self.app_get_json(url)
+        data = json.loads(res.data)
+        err_msg = "It should return 200"
+        assert res.status_code == 200, err_msg
+        assert mock.enqueue.called
+        keys = ['active_anon_last_week', 'published_projects_last_week',
+                'new_tasks_week', 'title', 'update_feed',
+                'draft_projects_last_week', 'update_projects_last_week',
+                'new_users_week', 'template', 'new_task_runs_week',
+                'returning_users_week', 'active_users_last_week', 'wait']
+        for key in keys:
+            assert key in data.keys(), data
+

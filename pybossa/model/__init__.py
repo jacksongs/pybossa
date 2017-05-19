@@ -1,20 +1,20 @@
 # -*- coding: utf8 -*-
-# This file is part of PyBossa.
+# This file is part of PYBOSSA.
 #
-# Copyright (C) 2015 SciFabric LTD.
+# Copyright (C) 2015 Scifabric LTD.
 #
-# PyBossa is free software: you can redistribute it and/or modify
+# PYBOSSA is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as published by
 # the Free Software Foundation, either version 3 of the License, or
 # (at your option) any later version.
 #
-# PyBossa is distributed in the hope that it will be useful,
+# PYBOSSA is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU Affero General Public License for more details.
 #
 # You should have received a copy of the GNU Affero General Public License
-# along with PyBossa.  If not, see <http://www.gnu.org/licenses/>.
+# along with PYBOSSA.  If not, see <http://www.gnu.org/licenses/>.
 
 import datetime
 import uuid
@@ -34,6 +34,38 @@ class DomainObject(object):
         for col in self.__table__.c:
             out[col.name] = getattr(self, col.name)
         return out
+
+    def info_public_keys(self, data=None):
+        """Return a dictionary of info field with public keys."""
+        out = dict()
+        if data is None:
+            data = self.dictize()
+        for key in self.public_info_keys():
+            if data.get('info'):
+                out[key] = data.get('info').get(key)
+        return out
+
+    def to_public_json(self, data=None):
+        """Return a dict that can be exported to JSON
+        with only public attributes."""
+
+        out = dict()
+        if data is None:
+            data = self.dictize()
+        for col in self.public_attributes():
+            if col == 'info':
+                out[col] = self.info_public_keys(data=data)
+            else:
+                out[col] = data.get(col)
+        return out
+
+    def public_attributes(self):  # pragma: no cover
+        """To be override by other class."""
+        pass
+
+    def public_info_keys(self):  # pragma: no cover
+        """To be override by other class."""
+        pass
 
     @classmethod
     def undictize(cls, dict_):

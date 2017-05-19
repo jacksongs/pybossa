@@ -1,36 +1,59 @@
 # -*- coding: utf8 -*-
-# This file is part of PyBossa.
+# This file is part of PYBOSSA.
 #
-# Copyright (C) 2015 SciFabric LTD.
+# Copyright (C) 2015 Scifabric LTD.
 #
-# PyBossa is free software: you can redistribute it and/or modify
+# PYBOSSA is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as published by
 # the Free Software Foundation, either version 3 of the License, or
 # (at your option) any later version.
 #
-# PyBossa is distributed in the hope that it will be useful,
+# PYBOSSA is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU Affero General Public License for more details.
 #
 # You should have received a copy of the GNU Affero General Public License
-# along with PyBossa.  If not, see <http://www.gnu.org/licenses/>.
+# along with PYBOSSA.  If not, see <http://www.gnu.org/licenses/>.
 import pybossa.util as util
 from mock import MagicMock
+from mock import patch
+from default import with_context, db, Test
 from datetime import datetime, timedelta
+from flask_wtf import Form
+from factories import UserFactory
 import calendar
 import time
 import csv
 import tempfile
 import os
 import json
+import hashlib
 
 
-class TestPybossaUtil(object):
+def myjsonify(data):
+    return data
 
 
-# TODO: test these 2 decorators in a more unitary way. The following tests have
-# been moved to test_api_common.py
+def myrender(template, **data):
+    return template, data
+
+
+class TestPybossaUtil(Test):
+
+    def setUp(self):
+        super(TestPybossaUtil, self).setUp()
+        with self.flask_app.app_context():
+            db.create_all()
+            self.redis_flushall()
+
+    def tearDown(self):
+        with self.flask_app.app_context():
+            db.drop_all()
+            self.redis_flushall()
+
+    # TODO: test this decorator in a more unitary way. The following tests have
+    # been moved to test_api_common.py
     # def test_jsonpify(self):
     #     """Test jsonpify decorator works."""
     #     res = self.app.get('/api/app/1?callback=mycallback')
@@ -39,18 +62,310 @@ class TestPybossaUtil(object):
     #     err_msg = "Status code should be 200"
     #     assert res.status_code == 200, err_msg
 
-    # def test_cors(self):
-    #     """Test CORS decorator works."""
-    #     res = self.app.get('/api/app/1')
-    #     err_msg = "CORS should be enabled"
-    #     print res.headers
-    #     assert res.headers['Access-Control-Allow-Origin'] == '*', err_msg
-    #     methods = ['PUT', 'HEAD', 'DELETE', 'OPTIONS', 'GET']
-    #     for m in methods:
-    #         assert m in res.headers['Access-Control-Allow-Methods'], err_msg
-    #     assert res.headers['Access-Control-Max-Age'] == '21600', err_msg
-    #     headers = 'CONTENT-TYPE, AUTHORIZATION'
-    #     assert res.headers['Access-Control-Allow-Headers'] == headers, err_msg
+    @with_context
+    @patch('pybossa.util.hmac.HMAC')
+    @patch('pybossa.util.base64.b64encode')
+    def test_disqus_sso_payload_auth_user(self, mock_b64encode, mock_hmac):
+        """Test Disqus SSO payload auth works."""
+        user = UserFactory.create()
+
+        DISQUS_PUBLIC_KEY = 'public'
+        DISQUS_SECRET_KEY = 'secret'
+        patch_dict = {'DISQUS_PUBLIC_KEY': DISQUS_PUBLIC_KEY,
+                      'DISQUS_SECRET_KEY': DISQUS_SECRET_KEY}
+        data = json.dumps({'id': user.id,
+                           'username': user.name,
+                           'email': user.email_addr})
+
+        mock_b64encode.return_value = data
+
+        with patch.dict(self.flask_app.config, patch_dict):
+            message, timestamp, sig, pub_key = util.get_disqus_sso_payload(user)
+            mock_b64encode.assert_called_with(data)
+            mock_hmac.assert_called_with(DISQUS_SECRET_KEY, '%s %s' % (data, timestamp),
+                                         hashlib.sha1)
+            assert timestamp
+            assert sig
+            assert pub_key == DISQUS_PUBLIC_KEY
+
+    @with_context
+    @patch('pybossa.util.hmac.HMAC')
+    @patch('pybossa.util.base64.b64encode')
+    def test_disqus_sso_payload_auth_user_no_keys(self, mock_b64encode, mock_hmac):
+        """Test Disqus SSO without keys works."""
+        user = UserFactory.create()
+        message, timestamp, sig, pub_key = util.get_disqus_sso_payload(user)
+        assert message is None
+        assert timestamp is None
+        assert sig is None
+        assert pub_key is None
+
+
+    @with_context
+    @patch('pybossa.util.hmac.HMAC')
+    @patch('pybossa.util.base64.b64encode')
+    def test_disqus_sso_payload_anon_user(self, mock_b64encode, mock_hmac):
+        """Test Disqus SSO payload anon works."""
+
+        DISQUS_PUBLIC_KEY = 'public'
+        DISQUS_SECRET_KEY = 'secret'
+        patch_dict = {'DISQUS_PUBLIC_KEY': DISQUS_PUBLIC_KEY,
+                      'DISQUS_SECRET_KEY': DISQUS_SECRET_KEY}
+
+        data = json.dumps({})
+
+        mock_b64encode.return_value = data
+
+        with patch.dict(self.flask_app.config, patch_dict):
+            message, timestamp, sig, pub_key = util.get_disqus_sso_payload(None)
+            mock_b64encode.assert_called_with(data)
+            mock_hmac.assert_called_with(DISQUS_SECRET_KEY, '%s %s' % (data, timestamp),
+                                         hashlib.sha1)
+            assert timestamp
+            assert sig
+            assert pub_key == DISQUS_PUBLIC_KEY
+
+
+    @with_context
+    def test_disqus_sso_payload_anon_user_no_keys(self):
+        """Test Disqus SSO without keys anon works."""
+        message, timestamp, sig, pub_key = util.get_disqus_sso_payload(None)
+        assert message is None
+        assert timestamp is None
+        assert sig is None
+        assert pub_key is None
+
+
+    @patch('pybossa.util.get_flashed_messages')
+    def test_last_flashed_messages(self, mockflash):
+        """Test last_flashed_message returns the last one."""
+        messages = ['foo', 'bar']
+        mockflash.return_value = messages
+        msg = util.last_flashed_message()
+        err_msg = "It should be the last message"
+        assert msg == messages[-1], err_msg
+
+    @patch('pybossa.util.get_flashed_messages')
+    def test_last_flashed_messages_none(self, mockflash):
+        """Test last_flashed_message returns the none."""
+        messages = []
+        mockflash.return_value = messages
+        msg = util.last_flashed_message()
+        err_msg = "It should be None"
+        assert msg is None, err_msg
+
+    @with_context
+    @patch('pybossa.util.request')
+    @patch('pybossa.util.render_template')
+    @patch('pybossa.util.jsonify')
+    @patch('pybossa.util.last_flashed_message')
+    def test_handle_content_type_json(self, mocklast, mockjsonify,
+                                      mockrender, mockrequest):
+        fake_d = {'Content-Type': 'application/json'}
+        mockrequest.headers.__getitem__.side_effect = fake_d.__getitem__
+        mockrequest.headers.get.side_effect = fake_d.get
+        mockrequest.headers.__iter__.side_effect = fake_d.__iter__
+        mockjsonify.side_effect = myjsonify
+        res = util.handle_content_type(dict(template='example.html'))
+        err_msg = "template key should exist"
+        assert res.get('template') == 'example.html', err_msg
+        err_msg = "jsonify should be called"
+        assert mockjsonify.called, err_msg
+
+    @with_context
+    @patch('pybossa.util.request')
+    @patch('pybossa.util.render_template')
+    @patch('pybossa.util.jsonify')
+    @patch('pybossa.util.last_flashed_message')
+    def test_handle_content_type_json_error(self, mocklast, mockjsonify,
+                                            mockrender, mockrequest):
+        fake_d = {'Content-Type': 'application/json'}
+        mockrequest.headers.__getitem__.side_effect = fake_d.__getitem__
+        mockrequest.headers.get.side_effect = fake_d.get
+        mockrequest.headers.__iter__.side_effect = fake_d.__iter__
+        mockjsonify.side_effect = myjsonify
+        res, code = util.handle_content_type(
+                                             dict(
+                                                 template='example.html',
+                                                 code=404,
+                                                 description="Not found"))
+        err_msg = "template key should exist"
+        assert res.get('template') == 'example.html', err_msg
+        err_msg = "jsonify should be called"
+        assert mockjsonify.called, err_msg
+        err_msg = "Error code should exist"
+        assert res.get('code') == 404, err_msg
+        assert code == 404, err_msg
+        err_msg = "Error description should exist"
+        assert res.get('description') is not None, err_msg
+
+    @with_context
+    @patch('pybossa.util.request')
+    @patch('pybossa.util.render_template')
+    @patch('pybossa.util.jsonify')
+    @patch('pybossa.util.generate_csrf')
+    @patch('pybossa.util.last_flashed_message')
+    def test_handle_content_type_json_form(self, mocklast, mockcsrf,
+                                           mockjsonify, mockrender,
+                                           mockrequest):
+        fake_d = {'Content-Type': 'application/json'}
+        mockrequest.headers.__getitem__.side_effect = fake_d.__getitem__
+        mockrequest.headers.get.side_effect = fake_d.get
+        mockrequest.headers.__iter__.side_effect = fake_d.__iter__
+        mockjsonify.side_effect = myjsonify
+        mockcsrf.return_value = "yourcsrf"
+        form = MagicMock(spec=Form, data=dict(foo=1), errors=None)
+        res = util.handle_content_type(dict(template='example.html',
+                                            form=form))
+        err_msg = "template key should exist"
+        assert res.get('template') == 'example.html', err_msg
+        err_msg = "jsonify should be called"
+        assert mockjsonify.called, err_msg
+        err_msg = "Form should exist"
+        assert res.get('form'), err_msg
+        err_msg = "Form should have a csrf key/value"
+        assert res.get('form').get('csrf') == 'yourcsrf', err_msg
+        err_msg = "There should be the keys of the form"
+        keys = ['foo', 'errors', 'csrf']
+        assert res.get('form').keys().sort() == keys.sort(), err_msg
+
+    @with_context
+    @patch('pybossa.util.request')
+    @patch('pybossa.util.render_template')
+    @patch('pybossa.util.jsonify')
+    @patch('pybossa.util.last_flashed_message')
+    def test_handle_content_type_json_pagination(self, mocklast, mockjsonify,
+                                                 mockrender, mockrequest):
+        fake_d = {'Content-Type': 'application/json'}
+        mockrequest.headers.__getitem__.side_effect = fake_d.__getitem__
+        mockrequest.headers.get.side_effect = fake_d.get
+        mockrequest.headers.__iter__.side_effect = fake_d.__iter__
+        mockjsonify.side_effect = myjsonify
+        pagination = util.Pagination(page=1, per_page=5, total_count=10)
+        res = util.handle_content_type(dict(template='example.html',
+                                            pagination=pagination))
+        err_msg = "template key should exist"
+        assert res.get('template') == 'example.html', err_msg
+        err_msg = "jsonify should be called"
+        assert mockjsonify.called, err_msg
+        err_msg = "Pagination should exist"
+        assert res.get('pagination') is not None, err_msg
+        assert res.get('pagination') == pagination.to_json(), err_msg
+
+    @with_context
+    @patch('pybossa.util.request')
+    @patch('pybossa.util.render_template')
+    @patch('pybossa.util.jsonify')
+    def test_handle_content_type_html(self, mockjsonify,
+                                      mockrender, mockrequest):
+        fake_d = {'Content-Type': 'text/html'}
+        mockrequest.headers.__getitem__.side_effect = fake_d.__getitem__
+        mockrequest.headers.get.side_effect = fake_d.get
+        mockrequest.headers.__iter__.side_effect = fake_d.__iter__
+        mockjsonify.side_effect = myjsonify
+        mockrender.side_effect = myrender
+        pagination = util.Pagination(page=1, per_page=5, total_count=10)
+        template, data = util.handle_content_type(dict(template='example.html',
+                                                       pagination=pagination))
+        err_msg = "Template should be rendered"
+        assert template == 'example.html', err_msg
+        err_msg = "Template key should not exist"
+        assert data.get('template') is None, err_msg
+        err_msg = "jsonify should not be called"
+        assert mockjsonify.called is False, err_msg
+        err_msg = "render_template should be called"
+        assert mockrender.called is True, err_msg
+
+    @with_context
+    @patch('pybossa.util.request')
+    @patch('pybossa.util.render_template')
+    @patch('pybossa.util.jsonify')
+    def test_handle_content_type_html_error(self, mockjsonify,
+                                            mockrender, mockrequest):
+        fake_d = {'Content-Type': 'text/html'}
+        mockrequest.headers.__getitem__.side_effect = fake_d.__getitem__
+        mockrequest.headers.get.side_effect = fake_d.get
+        mockrequest.headers.__iter__.side_effect = fake_d.__iter__
+        mockjsonify.side_effect = myjsonify
+        mockrender.side_effect = myrender
+        template, code = util.handle_content_type(dict(template='example.html',
+                                                       code=404))
+        data = template[1]
+        template = template[0]
+        err_msg = "Template should be rendered"
+        assert template == 'example.html', err_msg
+        err_msg = "Template key should not exist"
+        assert data.get('template') is None, err_msg
+        err_msg = "jsonify should not be called"
+        assert mockjsonify.called is False, err_msg
+        err_msg = "render_template should be called"
+        assert mockrender.called is True, err_msg
+        err_msg = "There should be an error"
+        assert code == 404, err_msg
+        err_msg = "There should not be code key"
+        assert data.get('code') is None, err_msg
+
+    @with_context
+    @patch('pybossa.util.request')
+    @patch('pybossa.util.render_template')
+    @patch('pybossa.util.jsonify')
+    @patch('pybossa.util.last_flashed_message')
+    def test_redirect_content_type_json(
+        self,
+        mocklast,
+        mockjsonify,
+        mockrender,
+     mockrequest):
+        fake_d = {'Content-Type': 'application/json'}
+        mockrequest.headers.__getitem__.side_effect = fake_d.__getitem__
+        mockrequest.headers.get.side_effect = fake_d.get
+        mockrequest.headers.__iter__.side_effect = fake_d.__iter__
+        mockjsonify.side_effect = myjsonify
+        res = util.redirect_content_type('http://next.uri')
+        err_msg = "next URI is wrong in redirction"
+        assert res.get('next') == 'http://next.uri', err_msg
+        err_msg = "jsonify should be called"
+        assert mockjsonify.called, err_msg
+
+    @with_context
+    @patch('pybossa.util.request')
+    @patch('pybossa.util.render_template')
+    @patch('pybossa.util.jsonify')
+    @patch('pybossa.util.last_flashed_message')
+    def test_redirect_content_type_json_message(
+            self, mocklast, mockjsonify, mockrender, mockrequest):
+        mocklast.return_value = None
+        fake_d = {'Content-Type': 'application/json'}
+        mockrequest.headers.__getitem__.side_effect = fake_d.__getitem__
+        mockrequest.headers.get.side_effect = fake_d.get
+        mockrequest.headers.__iter__.side_effect = fake_d.__iter__
+        mockjsonify.side_effect = myjsonify
+        res = util.redirect_content_type('http://next.uri', status='hallo123')
+        err_msg = "next URI is wrong in redirction"
+        assert res.get('next') == 'http://next.uri', err_msg
+        err_msg = "jsonify should be called"
+        assert mockjsonify.called, err_msg
+        err_msg = "status should exist"
+        assert res.get('status') == 'hallo123', err_msg
+
+    @with_context
+    @patch('pybossa.util.request')
+    @patch('pybossa.util.render_template')
+    @patch('pybossa.util.jsonify')
+    def test_redirect_content_type_json_html(
+            self, mockjsonify, mockrender, mockrequest):
+        fake_d = {'Content-Type': 'text/html'}
+        mockrequest.headers.__getitem__.side_effect = fake_d.__getitem__
+        mockrequest.headers.get.side_effect = fake_d.get
+        mockrequest.headers.__iter__.side_effect = fake_d.__iter__
+        mockjsonify.side_effect = myjsonify
+        res = util.redirect_content_type('/')
+        err_msg = "redirect 302 should be the response"
+        assert res.status_code == 302, err_msg
+        err_msg = "redirect to / should be done"
+        assert res.location == "/", err_msg
+        err_msg = "jsonify should not be called"
+        assert mockjsonify.called is False, err_msg
 
     def test_pretty_date(self):
         """Test pretty_date works."""
@@ -146,13 +461,21 @@ class TestPybossaUtil(object):
             assert i == page, err_msg
             page += 1
 
+        err_msg = "It should return JSON"
+        expected = dict(page=page-1,
+                        per_page=per_page,
+                        total=total_count,
+                        next=False,
+                        prev=True)
+        assert expected == p.to_json(), err_msg
+
     def test_unicode_csv_reader(self):
         """Test unicode_csv_reader works."""
         fake_csv = ['one, two, three']
         err_msg = "Each cell should be encoded as Unicode"
         for row in util.unicode_csv_reader(fake_csv):
             for item in row:
-                assert type(item) == unicode, err_msg
+                assert isinstance(item, unicode), err_msg
 
     def test_UnicodeWriter(self):
         """Test UnicodeWriter class works."""
@@ -216,14 +539,12 @@ class TestIsReservedName(object):
             reserved = util.is_reserved_name('project', 'published')
             assert reserved is True, reserved
 
-
     def test_returns_false_for_valid_name_for_app_blueprint(self):
         with self.app.app_context():
             reserved = util.is_reserved_name('project', 'test_project')
             assert reserved is False, reserved
             reserved = util.is_reserved_name('project', 'newProject')
             assert reserved is False, reserved
-
 
     def test_returns_true_for_reserved_name_for_account_blueprint(self):
         with self.app.app_context():
@@ -238,7 +559,6 @@ class TestIsReservedName(object):
             reserved = util.is_reserved_name('account', 'reset-password')
             assert reserved is True, reserved
 
-
     def test_returns_false_for_valid_name_for_account_blueprint(self):
         with self.app.app_context():
             reserved = util.is_reserved_name('account', 'fulanito')
@@ -246,12 +566,10 @@ class TestIsReservedName(object):
             reserved = util.is_reserved_name('acount', 'profileFulanito')
             assert reserved is False, reserved
 
-
     def test_returns_false_for_empty_name_string(self):
         with self.app.app_context():
             reserved = util.is_reserved_name('account', '')
             assert reserved is False, reserved
-
 
 
 class TestWithCacheDisabledDecorator(object):
@@ -262,7 +580,6 @@ class TestWithCacheDisabledDecorator(object):
     def tearDown(self):
         os.environ['PYBOSSA_REDIS_CACHE_DISABLED'] = '1'
 
-
     def test_it_returns_same_as_original_function(self):
         def original_func(first_value, second_value='world'):
             return 'first_value' + second_value
@@ -272,8 +589,8 @@ class TestWithCacheDisabledDecorator(object):
         call_with_kwargs = decorated_func('Hello, ', second_value='there')
 
         assert call_with_args == original_func('Hello, '), call_with_args
-        assert call_with_kwargs == original_func('Hello, ', second_value='there')
-
+        assert call_with_kwargs == original_func(
+            'Hello, ', second_value='there')
 
     def test_it_executes_function_with_cache_disabled(self):
         def original_func():
@@ -284,7 +601,6 @@ class TestWithCacheDisabledDecorator(object):
         assert original_func() == '0', original_func()
         assert decorated_func() == '1', decorated_func()
 
-
     def test_it_executes_function_with_cache_disabled_triangulation(self):
         def original_func():
             return os.environ.get('PYBOSSA_REDIS_CACHE_DISABLED')
@@ -294,7 +610,6 @@ class TestWithCacheDisabledDecorator(object):
 
         assert original_func() == None, original_func()
         assert decorated_func() == '1', decorated_func()
-
 
     def test_it_leaves_environment_as_it_was_before(self):
         @util.with_cache_disabled
@@ -362,35 +677,76 @@ class TestUsernameFromFullnameFunction(object):
 class TestRankProjects(object):
 
     def test_it_gives_priority_to_projects_with_an_avatar(self):
-        projects = [{'info': {}, 'n_tasks': 4L, 'short_name': 'noavatar', 'name': u'with avatar', 'overall_progress': 0L, 'n_volunteers': 1L},
-                    {'info': {u'container': u'user_7', u'thumbnail': u'avatar.png'}, 'n_tasks': 4L, 'short_name': 'avatar', 'name': u'without avatar', 'overall_progress': 100L, 'n_volunteers': 1L}]
+        projects = [
+            {'info': {},
+             'n_tasks': 4, 'short_name': 'noavatar', 'name': u'with avatar',
+             'overall_progress': 0, 'n_volunteers': 1},
+            {'info': {u'container': u'user_7', u'thumbnail': u'avatar.png'},
+             'n_tasks': 4, 'short_name': 'avatar', 'name': u'without avatar',
+             'overall_progress': 100, 'n_volunteers': 1}]
         ranked = util.rank(projects)
 
         assert ranked[0]['name'] == "with avatar"
         assert ranked[1]['name'] == "without avatar"
 
     def test_it_gives_priority_to_uncompleted_projects(self):
-        projects = [{'info': {}, 'n_tasks': 4L, 'short_name': 'uncompleted', 'name': u'uncompleted', 'overall_progress': 0L, 'n_volunteers': 1L},
-                    {'info': {}, 'n_tasks': 4L, 'short_name': 'completed', 'name': u'completed', 'overall_progress': 100L, 'n_volunteers': 1L}]
+        projects = [{'info': {},
+                     'n_tasks': 4,
+                     'short_name': 'uncompleted',
+                     'name': u'uncompleted',
+                     'overall_progress': 0,
+                     'n_volunteers': 1},
+                    {'info': {},
+                     'n_tasks': 4,
+                     'short_name': 'completed',
+                     'name': u'completed',
+                     'overall_progress': 100,
+                     'n_volunteers': 1}]
         ranked = util.rank(projects)
 
         assert ranked[0]['name'] == "uncompleted"
         assert ranked[1]['name'] == "completed"
 
     def test_it_penalizes_projects_with_test_in_the_name_or_short_name(self):
-        projects = [{'info': {}, 'n_tasks': 4L, 'name': u'my test 123', 'short_name': u'123', 'overall_progress': 0L, 'n_volunteers': 1L},
-                    {'info': {}, 'n_tasks': 246L, 'name': u'123', 'short_name': u'mytest123', 'overall_progress': 0L, 'n_volunteers': 1L},
-                    {'info': {}, 'n_tasks': 246L, 'name': u'real', 'short_name': u'real', 'overall_progress': 0L, 'n_volunteers': 1L}]
+        projects = [{'info': {},
+                     'n_tasks': 4,
+                     'name': u'my test 123',
+                     'short_name': u'123',
+                     'overall_progress': 0,
+                     'n_volunteers': 1},
+                    {'info': {},
+                     'n_tasks': 246,
+                     'name': u'123',
+                     'short_name': u'mytest123',
+                     'overall_progress': 0,
+                     'n_volunteers': 1},
+                    {'info': {},
+                     'n_tasks': 246,
+                     'name': u'real',
+                     'short_name': u'real',
+                     'overall_progress': 0,
+                     'n_volunteers': 1}]
         ranked = util.rank(projects)
 
         assert ranked[0]['name'] == "real"
 
     def test_rank_by_number_of_tasks(self):
-        projects = [{'info': {}, 'n_tasks': 1L, 'name': u'last', 'short_name': u'a', 'overall_progress': 0L, 'n_volunteers': 1L},
-                    {'info': {}, 'n_tasks': 11L, 'name': u'fourth', 'short_name': u'b', 'overall_progress': 0L, 'n_volunteers': 1L},
-                    {'info': {}, 'n_tasks': 21L, 'name': u'third', 'short_name': u'c', 'overall_progress': 0L, 'n_volunteers': 1L},
-                    {'info': {}, 'n_tasks': 51L, 'name': u'second', 'short_name': u'd', 'overall_progress': 0L, 'n_volunteers': 1L},
-                    {'info': {}, 'n_tasks': 101L, 'name': u'first', 'short_name': u'e', 'overall_progress': 0L, 'n_volunteers': 1L}]
+        projects = [
+            {'info': {},
+             'n_tasks': 1, 'name': u'last', 'short_name': u'a',
+             'overall_progress': 0, 'n_volunteers': 1},
+            {'info': {},
+             'n_tasks': 11, 'name': u'fourth', 'short_name': u'b',
+             'overall_progress': 0, 'n_volunteers': 1},
+            {'info': {},
+             'n_tasks': 21, 'name': u'third', 'short_name': u'c',
+             'overall_progress': 0, 'n_volunteers': 1},
+            {'info': {},
+             'n_tasks': 51, 'name': u'second', 'short_name': u'd',
+             'overall_progress': 0, 'n_volunteers': 1},
+            {'info': {},
+             'n_tasks': 101, 'name': u'first', 'short_name': u'e',
+             'overall_progress': 0, 'n_volunteers': 1}]
         ranked = util.rank(projects)
 
         assert ranked[0]['name'] == 'first'
@@ -400,12 +756,25 @@ class TestRankProjects(object):
         assert ranked[4]['name'] == 'last'
 
     def test_rank_by_number_of_crafters(self):
-        projects = [{'info': {}, 'n_tasks': 1L, 'name': u'last', 'short_name': u'a', 'overall_progress': 0L, 'n_volunteers': 0L},
-                    {'info': {}, 'n_tasks': 1L, 'name': u'fifth', 'short_name': u'b', 'overall_progress': 0L, 'n_volunteers': 1L},
-                    {'info': {}, 'n_tasks': 1L, 'name': u'fourth', 'short_name': u'b', 'overall_progress': 0L, 'n_volunteers': 11L},
-                    {'info': {}, 'n_tasks': 1L, 'name': u'third', 'short_name': u'c', 'overall_progress': 0L, 'n_volunteers': 21L},
-                    {'info': {}, 'n_tasks': 1L, 'name': u'second', 'short_name': u'd', 'overall_progress': 0L, 'n_volunteers': 51L},
-                    {'info': {}, 'n_tasks': 1L, 'name': u'first', 'short_name': u'e', 'overall_progress': 0L, 'n_volunteers': 101L}]
+        projects = [
+            {'info': {},
+             'n_tasks': 1, 'name': u'last', 'short_name': u'a',
+             'overall_progress': 0, 'n_volunteers': 0},
+            {'info': {},
+             'n_tasks': 1, 'name': u'fifth', 'short_name': u'b',
+             'overall_progress': 0, 'n_volunteers': 1},
+            {'info': {},
+             'n_tasks': 1, 'name': u'fourth', 'short_name': u'b',
+             'overall_progress': 0, 'n_volunteers': 11},
+            {'info': {},
+             'n_tasks': 1, 'name': u'third', 'short_name': u'c',
+             'overall_progress': 0, 'n_volunteers': 21},
+            {'info': {},
+             'n_tasks': 1, 'name': u'second', 'short_name': u'd',
+             'overall_progress': 0, 'n_volunteers': 51},
+            {'info': {},
+             'n_tasks': 1, 'name': u'first', 'short_name': u'e',
+             'overall_progress': 0, 'n_volunteers': 101}]
         ranked = util.rank(projects)
 
         assert ranked[0]['name'] == 'first'
@@ -421,11 +790,28 @@ class TestRankProjects(object):
         two_days_ago = today - timedelta(2)
         three_days_ago = today - timedelta(3)
         four_days_ago = today - timedelta(4)
-        projects = [{'info': {}, 'n_tasks': 1L, 'name': u'last', 'short_name': u'a', 'overall_progress': 0L, 'n_volunteers': 1L, 'last_activity_raw': four_days_ago.strftime('%Y-%m-%dT%H:%M:%S.%f')},
-                    {'info': {}, 'n_tasks': 1L, 'name': u'fourth', 'short_name': u'c', 'overall_progress': 0L, 'n_volunteers': 1L, 'last_activity_raw': three_days_ago.strftime('%Y-%m-%dT%H:%M:%S')},
-                    {'info': {}, 'n_tasks': 1L, 'name': u'third', 'short_name': u'd', 'overall_progress': 0L, 'n_volunteers': 1L, 'updated': two_days_ago.strftime('%Y-%m-%dT%H:%M:%S.%f')},
-                    {'info': {}, 'n_tasks': 1L, 'name': u'second', 'short_name': u'e', 'overall_progress': 0L, 'n_volunteers': 1L, 'updated': yesterday.strftime('%Y-%m-%dT%H:%M:%S')},
-                    {'info': {}, 'n_tasks': 1L, 'name': u'first', 'short_name': u'e', 'overall_progress': 0L, 'n_volunteers': 1L, 'updated': today.strftime('%Y-%m-%dT%H:%M:%S.%f')}]
+        projects = [{'info': {},
+                     'n_tasks': 1, 'name': u'last', 'short_name': u'a',
+                     'overall_progress': 0, 'n_volunteers': 1,
+                     'last_activity_raw': four_days_ago.strftime(
+                         '%Y-%m-%dT%H:%M:%S.%f')},
+                    {'info': {},
+                     'n_tasks': 1, 'name': u'fourth', 'short_name': u'c',
+                     'overall_progress': 0, 'n_volunteers': 1,
+                     'last_activity_raw': three_days_ago.strftime(
+                         '%Y-%m-%dT%H:%M:%S')},
+                    {'info': {},
+                     'n_tasks': 1, 'name': u'third', 'short_name': u'd',
+                     'overall_progress': 0, 'n_volunteers': 1,
+                     'updated': two_days_ago.strftime('%Y-%m-%dT%H:%M:%S.%f')},
+                    {'info': {},
+                     'n_tasks': 1, 'name': u'second', 'short_name': u'e',
+                     'overall_progress': 0, 'n_volunteers': 1,
+                     'updated': yesterday.strftime('%Y-%m-%dT%H:%M:%S')},
+                    {'info': {},
+                     'n_tasks': 1, 'name': u'first', 'short_name': u'e',
+                     'overall_progress': 0, 'n_volunteers': 1,
+                     'updated': today.strftime('%Y-%m-%dT%H:%M:%S.%f')}]
         ranked = util.rank(projects)
 
         assert ranked[0]['name'] == 'first', ranked[0]['name']
@@ -433,3 +819,30 @@ class TestRankProjects(object):
         assert ranked[2]['name'] == 'third', ranked[2]['name']
         assert ranked[3]['name'] == 'fourth', ranked[3]['name']
         assert ranked[4]['name'] == 'last', ranked[4]['name']
+
+    @patch('pybossa.util.url_for')
+    def test_get_avatar_url(self, mock_url_for):
+        """Test get_avatar_url works."""
+        util.get_avatar_url('rackspace', '1.png', '1')
+        mock_url_for.assert_called_with('rackspace', container='1', filename='1.png')
+
+        util.get_avatar_url('local', '1.png', '1')
+        mock_url_for.assert_called_with('uploads.uploaded_file', filename='1/1.png')
+
+
+class TestJSONEncoder(object):
+
+    def test_jsonencoder(self):
+        """Test JSON encoder."""
+        from pybossa.extensions import JSONEncoder
+        from speaklater import make_lazy_string
+        encoder = JSONEncoder()
+        sval = "Hello world"
+        string = make_lazy_string(lambda: sval)
+
+        encoder = JSONEncoder()
+
+        data = encoder.encode(dict(foo=string))
+        data = json.loads(data)
+        err_msg = "The encoder should manage lazystrings"
+        assert data.get('foo') == sval, err_msg

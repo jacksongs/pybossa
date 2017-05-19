@@ -1,22 +1,23 @@
 # -*- coding: utf8 -*-
-# This file is part of PyBossa.
+# This file is part of PYBOSSA.
 #
-# Copyright (C) 2015 SciFabric LTD.
+# Copyright (C) 2015 Scifabric LTD.
 #
-# PyBossa is free software: you can redistribute it and/or modify
+# PYBOSSA is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as published by
 # the Free Software Foundation, either version 3 of the License, or
 # (at your option) any later version.
 #
-# PyBossa is distributed in the hope that it will be useful,
+# PYBOSSA is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU Affero General Public License for more details.
 #
 # You should have received a copy of the GNU Affero General Public License
-# along with PyBossa.  If not, see <http://www.gnu.org/licenses/>.
+# along with PYBOSSA.  If not, see <http://www.gnu.org/licenses/>.
 
 
+import json
 from helper import web
 from default import db, with_context
 from factories import ProjectFactory, BlogpostFactory
@@ -31,6 +32,7 @@ user_repo = UserRepository(db)
 
 class TestBlogpostView(web.Helper):
 
+    @with_context
     def test_blogposts_get_all(self):
         """Test blogpost GET all blogposts"""
         user = self.create_users()[1]
@@ -53,15 +55,82 @@ class TestBlogpostView(web.Helper):
         assert 'titleone' in res.data
         assert 'titletwo' in res.data
 
+    @with_context
+    def test_json_blogposts_get_all(self):
+        """Test JSON blogpost GET all blogposts"""
+        user = self.create_users()[1]
+        project = ProjectFactory.create(owner=user)
+        blogpost_1 = BlogpostFactory.create(owner=user, project=project, title='titleone')
+        blogpost_2 = BlogpostFactory.create(owner=user, project=project, title='titletwo')
 
+        url = "/project/%s/blog" % project.short_name
+
+        # As anonymous
+        res = self.app_get_json(url)
+        assert res.status_code == 200, res.status_code
+        data = json.loads(res.data)
+        assert 'api_key' not in data['owner'].keys()
+        assert 'email_addr' not in data['owner'].keys()
+        assert 'google_user_id' not in data['owner'].keys()
+        assert 'facebook_user_id' not in data['owner'].keys()
+        assert 'twitter_user_id' not in data['owner'].keys()
+        for blogpost in data['blogposts']:
+            assert blogpost['title'] in ['titleone', 'titletwo']
+
+        # As authenticated
+        self.register()
+        res = self.app_get_json(url, follow_redirects=True)
+        assert res.status_code == 200, res.status_code
+        data = json.loads(res.data)
+        assert 'api_key' not in data['owner'].keys()
+        assert 'email_addr' not in data['owner'].keys()
+        assert 'google_user_id' not in data['owner'].keys()
+        assert 'facebook_user_id' not in data['owner'].keys()
+        assert 'twitter_user_id' not in data['owner'].keys()
+        for blogpost in data['blogposts']:
+            assert blogpost['title'] in ['titleone', 'titletwo']
+
+        self.signout()
+
+        # As owner 
+        self.signin(email=user.email_addr, password=self.password)
+        res = self.app_get_json(url, follow_redirects=True)
+        assert res.status_code == 200, res.status_code
+        data = json.loads(res.data)
+        assert 'api_key' in data['owner'].keys()
+        assert 'email_addr' in data['owner'].keys()
+        assert 'google_user_id' in data['owner'].keys()
+        assert 'facebook_user_id' in data['owner'].keys()
+        assert 'twitter_user_id' in data['owner'].keys()
+        for blogpost in data['blogposts']:
+            assert blogpost['title'] in ['titleone', 'titletwo']
+
+        self.signout()
+
+
+
+    @with_context
     def test_blogpost_get_all_errors(self):
-        """Test blogpost GET all raises error if the project does not exist"""
+        """test blogpost get all raises error if the project does not exist"""
         url = "/project/non-existing-project/blog"
 
         res = self.app.get(url, follow_redirects=True)
         assert res.status_code == 404, res.status_code
 
 
+    @with_context
+    def test_json_blogpost_get_all_errors(self):
+        """Test JSON blogpost GET all raises error if the project does not exist"""
+        url = "/project/non-existing-project/blog"
+
+        res = self.app_get_json(url, follow_redirects=True)
+        data = json.loads(res.data)
+        assert res.status_code == 404, res.status_code
+        assert data['code'] == 404
+
+
+
+    @with_context
     def test_blogpost_get_one(self):
         """Test blogpost GET with id shows one blogpost"""
         user = self.create_users()[1]
@@ -81,6 +150,7 @@ class TestBlogpostView(web.Helper):
         assert 'title' in res.data
 
 
+    @with_context
     def test_blogpost_get_one_errors(self):
         """Test blogposts GET non existing posts raises errors"""
         self.register()
@@ -106,6 +176,7 @@ class TestBlogpostView(web.Helper):
 
     from pybossa.view.projects import redirect
 
+    @with_context
     @patch('pybossa.view.projects.redirect', wraps=redirect)
     def test_blogpost_create_by_owner(self, mock_redirect):
         """Test blogposts, project owners can create"""
@@ -129,6 +200,7 @@ class TestBlogpostView(web.Helper):
         assert blogpost.user_id == user.id, blogpost.user_id
 
 
+    @with_context
     def test_blogpost_create_by_anonymous(self):
         """Test blogpost create, anonymous users are redirected to signin"""
         project = ProjectFactory.create()
@@ -148,6 +220,7 @@ class TestBlogpostView(web.Helper):
         assert blogpost == None, blogpost
 
 
+    @with_context
     def test_blogpost_create_by_non_owner(self):
         """Test blogpost create by non owner of the project is forbidden"""
         self.register()
@@ -166,6 +239,7 @@ class TestBlogpostView(web.Helper):
         assert res.status_code == 403, res.status_code
 
 
+    @with_context
     def test_blogpost_create_errors(self):
         """Test blogposts create for non existing projects raises errors"""
         self.register()
@@ -179,6 +253,7 @@ class TestBlogpostView(web.Helper):
         assert res.status_code == 404, res.status_code
 
 
+    @with_context
     @patch('pybossa.view.projects.redirect', wraps=redirect)
     def test_blogpost_update_by_owner(self, mock_redirect):
         """Test blogposts, project owners can update"""
@@ -205,6 +280,7 @@ class TestBlogpostView(web.Helper):
 
 
 
+    @with_context
     def test_blogpost_update_by_anonymous(self):
         """Test blogpost update, anonymous users are redirected to signin"""
         project = ProjectFactory.create()
@@ -251,6 +327,7 @@ class TestBlogpostView(web.Helper):
         assert blogpost.title == 'title', blogpost.title
 
 
+    @with_context
     def test_blogpost_update_errors(self):
         """Test blogposts update for non existing projects raises errors"""
         self.register()
@@ -278,6 +355,7 @@ class TestBlogpostView(web.Helper):
         assert res.status_code == 404, res.status_code
 
 
+    @with_context
     @patch('pybossa.view.projects.redirect', wraps=redirect)
     def test_blogpost_delete_by_owner(self, mock_redirect):
         """Test blogposts, project owner can delete"""
@@ -297,6 +375,7 @@ class TestBlogpostView(web.Helper):
 
 
 
+    @with_context
     def test_blogpost_delete_by_anonymous(self):
         """Test blogpost delete, anonymous users are redirected to signin"""
         project = ProjectFactory.create()
@@ -330,6 +409,7 @@ class TestBlogpostView(web.Helper):
         assert blogpost is not None
 
 
+    @with_context
     def test_blogpost_delete_errors(self):
         """Test blogposts delete for non existing projects raises errors"""
         self.register()

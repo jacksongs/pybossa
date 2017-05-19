@@ -1,23 +1,23 @@
 # -*- coding: utf8 -*-
-# This file is part of PyBossa.
+# This file is part of PYBOSSA.
 #
-# Copyright (C) 2015 SciFabric LTD.
+# Copyright (C) 2015 Scifabric LTD.
 #
-# PyBossa is free software: you can redistribute it and/or modify
+# PYBOSSA is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as published by
 # the Free Software Foundation, either version 3 of the License, or
 # (at your option) any later version.
 #
-# PyBossa is distributed in the hope that it will be useful,
+# PYBOSSA is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU Affero General Public License for more details.
 #
 # You should have received a copy of the GNU Affero General Public License
-# along with PyBossa.  If not, see <http://www.gnu.org/licenses/>.
+# along with PYBOSSA.  If not, see <http://www.gnu.org/licenses/>.
 # Cache global variables for timeouts
 """
-JSON Exporter module for exporting tasks and tasks results out of PyBossa
+JSON Exporter module for exporting tasks and tasks results out of PYBOSSA
 """
 
 import json
@@ -30,15 +30,9 @@ from werkzeug.utils import secure_filename
 class JsonExporter(Exporter):
 
     def gen_json(self, table, id):
-        n = getattr(task_repo, 'count_%ss_with' % table)(project_id=id)
-        sep = ", "
-        yield "["
-        for i, tr in enumerate(getattr(task_repo, 'filter_%ss_by' % table)(project_id=id, yielded=True), 1):
-            item = json.dumps(tr.dictize())
-            if (i == n):
-                sep = ""
-            yield item + sep
-        yield "]"
+        data = getattr(task_repo, 'filter_%ss_by' % table)(project_id=id)
+        tmp = [row.dictize() for row in data]
+        return tmp
 
     def _respond_json(self, ty, id):  # TODO: Refactor _respond_json out?
         # TODO: check ty here
@@ -50,8 +44,7 @@ class JsonExporter(Exporter):
         if json_task_generator is not None:
             datafile = tempfile.NamedTemporaryFile()
             try:
-                for line in json_task_generator:
-                    datafile.write(str(line))
+                datafile.write(json.dumps(json_task_generator))
                 datafile.flush()
                 zipped_datafile = tempfile.NamedTemporaryFile()
                 try:

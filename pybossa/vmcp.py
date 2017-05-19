@@ -1,20 +1,20 @@
 # -*- coding: utf8 -*-
-# This file is part of PyBossa.
+# This file is part of PYBOSSA.
 #
-# Copyright (C) 2015 SciFabric LTD.
+# Copyright (C) 2015 Scifabric LTD.
 #
-# PyBossa is free software: you can redistribute it and/or modify
+# PYBOSSA is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as published by
 # the Free Software Foundation, either version 3 of the License, or
 # (at your option) any later version.
 #
-# PyBossa is distributed in the hope that it will be useful,
+# PYBOSSA is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU Affero General Public License for more details.
 #
 # You should have received a copy of the GNU Affero General Public License
-# along with PyBossa.  If not, see <http://www.gnu.org/licenses/>.
+# along with PYBOSSA.  If not, see <http://www.gnu.org/licenses/>.
 """VMCP module to support CernVM.
 
 Sign the data in the given dictionary and return a new hash
@@ -25,7 +25,7 @@ that includes the signature.
 @param $pkey Is the path to the private key file that will be used to
 calculate the signature
 """
-import M2Crypto
+import rsa
 import hashlib
 import base64
 
@@ -67,7 +67,8 @@ def calculate_buffer(data, salt):
 def sign(data, salt, pkey):
     """Sign data."""
     strBuffer = calculate_buffer(data, salt)
-    rsa = M2Crypto.RSA.load_key(pkey)
-    digest = hashlib.new('sha512', strBuffer).digest()
-    data['signature'] = base64.b64encode(rsa.sign(digest, "sha512"))
+    with open(pkey, 'r') as f:
+        private_key_string = f.read()
+    private_key = rsa.PrivateKey.load_pkcs1(private_key_string)
+    data['signature'] = base64.b64encode(rsa.sign(strBuffer, private_key, 'SHA-512'))
     return data

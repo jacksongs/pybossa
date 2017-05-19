@@ -1,24 +1,26 @@
 # -*- coding: utf8 -*-
-# This file is part of PyBossa.
+# This file is part of PYBOSSA.
 #
-# Copyright (C) 2015 SciFabric LTD.
+# Copyright (C) 2015 Scifabric LTD.
 #
-# PyBossa is free software: you can redistribute it and/or modify
+# PYBOSSA is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as published by
 # the Free Software Foundation, either version 3 of the License, or
 # (at your option) any later version.
 #
-# PyBossa is distributed in the hope that it will be useful,
+# PYBOSSA is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU Affero General Public License for more details.
 #
 # You should have received a copy of the GNU Affero General Public License
-# along with PyBossa.  If not, see <http://www.gnu.org/licenses/>.
+# along with PYBOSSA.  If not, see <http://www.gnu.org/licenses/>.
 from datetime import datetime
 
 from rq import Queue
 from sqlalchemy import event
+
+from flask import url_for
 
 from pybossa.feed import update_feed
 from pybossa.model import update_project_timestamp, update_target_timestamp
@@ -32,66 +34,94 @@ from pybossa.model.user import User
 from pybossa.model.result import Result
 from pybossa.core import result_repo
 from pybossa.jobs import webhook, notify_blog_users
+from pybossa.jobs import create_onesignal_app, push_notification
+
 from pybossa.core import sentinel
 
 webhook_queue = Queue('high', connection=sentinel.master)
-mail_queue = Queue('super', connection=sentinel.master)
+mail_queue = Queue('email', connection=sentinel.master)
+webpush_queue = Queue('webpush', connection=sentinel.master)
 
 
 @event.listens_for(Blogpost, 'after_insert')
 def add_blog_event(mapper, conn, target):
-    """Update PyBossa feed with new blog post."""
+    """Update PYBOSSA feed with new blog post."""
     sql_query = ('select name, short_name, info from project \
                  where id=%s') % target.project_id
     results = conn.execute(sql_query)
-    obj = dict(id=target.project_id,
-               name=None,
-               short_name=None,
-               info=None,
-               action_updated='Blog')
+    obj = dict(action_updated='Blog')
+    tmp = dict()
     for r in results:
-        obj['name'] = r.name
-        obj['short_name'] = r.short_name
-        obj['info'] = r.info
+        tmp['id'] = target.project_id
+        tmp['name'] = r.name
+        tmp['short_name'] = r.short_name
+        tmp['info'] = r.info
+    tmp = Project().to_public_json(tmp)
+    obj.update(tmp)
     update_feed(obj)
     # Notify volunteers
     mail_queue.enqueue(notify_blog_users,
                        blog_id=target.id,
                        project_id=target.project_id)
+    contents = {"en": "New update!"}
+    headings = {"en": target.title}
+    launch_url = url_for('project.show_blogpost',
+                         short_name=tmp['short_name'],
+                         id=target.id,
+                         _external=True)
+    web_buttons = [{"id": "read-more-button",
+                    "text": "Read more",
+                    "icon": "http://i.imgur.com/MIxJp1L.png",
+                    "url": launch_url }]
+    webpush_queue.enqueue(push_notification,
+                          project_id=target.project_id,
+                          contents=contents,
+                          headings=headings,
+                          web_buttons=web_buttons,
+                          launch_url=launch_url)
 
 
 @event.listens_for(Project, 'after_insert')
 def add_project_event(mapper, conn, target):
-    """Update PyBossa feed with new project."""
-    obj = dict(id=target.id,
+    """Update PYBOSSA feed with new project."""
+    tmp = dict(id=target.id,
                name=target.name,
                short_name=target.short_name,
-               action_updated='Project')
+               info=target.info)
+    obj = dict(action_updated='Project')
+    tmp = Project().to_public_json(tmp)
+    obj.update(tmp)
     update_feed(obj)
+
+
+@event.listens_for(Project, 'after_insert')
+def add_onesignal_app(mapper, conn, target):
+    """Update PYBOSSA project with onesignal app."""
+    webpush_queue.enqueue(create_onesignal_app, target.id)
 
 
 @event.listens_for(Task, 'after_insert')
 def add_task_event(mapper, conn, target):
-    """Update PyBossa feed with new task."""
+    """Update PYBOSSA feed with new task."""
     sql_query = ('select name, short_name, info from project \
                  where id=%s') % target.project_id
     results = conn.execute(sql_query)
-    obj = dict(id=target.project_id,
-               name=None,
-               short_name=None,
-               info=None,
-               action_updated='Task')
+    obj = dict(action_updated='Task')
+    tmp = dict()
     for r in results:
-        obj['name'] = r.name
-        obj['short_name'] = r.short_name
-        obj['info'] = r.info
+        tmp['id'] = target.project_id
+        tmp['name'] = r.name
+        tmp['short_name'] = r.short_name
+        tmp['info'] = r.info
+    tmp = Project().to_public_json(tmp)
+    obj.update(tmp)
     update_feed(obj)
 
 
 @event.listens_for(User, 'after_insert')
 def add_user_event(mapper, conn, target):
-    """Update PyBossa feed with new user."""
-    obj = target.dictize()
+    """Update PYBOSSA feed with new user."""
+    obj = target.to_public_json()
     obj['action_updated']='User'
     update_feed(obj)
 
@@ -102,14 +132,15 @@ def add_user_contributed_to_feed(conn, user_id, project_obj):
                      where id=%s') % user_id
         results = conn.execute(sql_query)
         for r in results:
-            obj = dict(id=user_id,
+            tmp = dict(id=user_id,
                        name=r.name,
                        fullname=r.fullname,
-                       info=r.info,
-                       project_name=project_obj['name'],
-                       project_short_name=project_obj['short_name'],
-                       action_updated='UserContribution')
-        update_feed(obj)
+                       info=r.info)
+            tmp = User().to_public_json(tmp)
+            tmp['project_name'] = project_obj['name']
+            tmp['project_short_name'] = project_obj['short_name']
+            tmp['action_updated'] = 'UserContribution'
+        update_feed(tmp)
 
 
 def is_task_completed(conn, task_id):
@@ -183,27 +214,28 @@ def on_taskrun_submit(mapper, conn, target):
     sql_query = ('select name, short_name, published, webhook, info from project \
                  where id=%s') % target.project_id
     results = conn.execute(sql_query)
-    project_obj = dict(id=target.project_id,
-                   name=None,
-                   short_name=None,
-                   published=False,
-                   info=None,
-                   webhook=None,
-                   action_updated='TaskCompleted')
+    tmp = dict()
     for r in results:
-        project_obj['name'] = r.name
-        project_obj['short_name'] = r.short_name
-        project_obj['published'] = r.published
-        project_obj['info'] = r.info
-        project_obj['webhook'] = r.webhook
-        project_obj['id'] = target.project_id
+        tmp['name'] = r.name
+        tmp['short_name'] = r.short_name
+        _published = r.published
+        tmp['info'] = r.info
+        _webhook = r.webhook
+        tmp['id'] = target.project_id
 
-    add_user_contributed_to_feed(conn, target.user_id, project_obj)
-    if is_task_completed(conn, target.task_id) and project_obj['published']:
+    project_public = dict()
+    project_public.update(Project().to_public_json(tmp))
+    project_public['action_updated'] = 'TaskCompleted'
+
+    add_user_contributed_to_feed(conn, target.user_id, project_public)
+    if is_task_completed(conn, target.task_id):
         update_task_state(conn, target.task_id)
-        update_feed(project_obj)
+        update_feed(project_public)
         result_id = create_result(conn, target.project_id, target.task_id)
-        push_webhook(project_obj, target.task_id, result_id)
+        project_private = dict()
+        project_private.update(project_public)
+        project_private['webhook'] = _webhook
+        push_webhook(project_private, target.task_id, result_id)
 
 
 @event.listens_for(Blogpost, 'after_insert')

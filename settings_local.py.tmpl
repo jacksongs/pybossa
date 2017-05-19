@@ -189,3 +189,30 @@ PRO_FEATURES = {
 
 # Libsass style. You can use nested, expanded, compact and compressed
 LIBSASS_STYLE = 'compressed'
+
+# CORS resources configuration.
+# WARNING: Only modify this if you know what you are doing. The below config
+# are the defaults, allowing PYBOSSA to have full CORS api. 
+# For more options, check the Flask-Cors documentation: https://flask-cors.readthedocs.io/en/latest/
+# CORS_RESOURCES = {r"/api/*": {"origins": "*",
+#                               "allow_headers": ['Content-Type',
+#                                                 'Authorization'],
+#                               "methods": "*"
+#                               }}
+
+# Email notifications for background jobs.
+# FAILED_JOBS_MAILS = 7
+# FAILED_JOBS_RETRIES = 3
+
+# Language to use stems, full text search, etc. from postgresql.
+# FULLTEXTSEARCH_LANGUAGE = 'english'
+
+
+# Use strict slashes at endpoints, by default True
+# This will return a 404 if and endpoint does not have the api/endpoint/
+# while if you configured as False, it will return the resource with and without the trailing /
+# STRICT_SLASHES = True
+
+# Use SSO on Disqus.com
+# DISQUS_SECRET_KEY = 'secret-key'
+# DISQUS_PUBLIC_KEY = 'public-key'

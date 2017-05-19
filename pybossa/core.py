@@ -1,36 +1,38 @@
 # -*- coding: utf8 -*-
-# This file is part of PyBossa.
+# This file is part of PYBOSSA.
 #
-# Copyright (C) 2015 SciFabric LTD.
+# Copyright (C) 2015 Scifabric LTD.
 #
-# PyBossa is free software: you can redistribute it and/or modify
+# PYBOSSA is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as published by
 # the Free Software Foundation, either version 3 of the License, or
 # (at your option) any later version.
 #
-# PyBossa is distributed in the hope that it will be useful,
+# PYBOSSA is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU Affero General Public License for more details.
 #
 # You should have received a copy of the GNU Affero General Public License
-# along with PyBossa.  If not, see <http://www.gnu.org/licenses/>.
-"""Core module for PyBossa."""
+# along with PYBOSSA.  If not, see <http://www.gnu.org/licenses/>.
+"""Core module for PYBOSSA."""
 import os
 import logging
 import humanize
 from flask import Flask, url_for, request, render_template, \
-    flash, _app_ctx_stack
+    flash, _app_ctx_stack, abort
 from flask.ext.login import current_user
 from flask.ext.babel import gettext
 from flask.ext.assets import Bundle
+from flask_json_multidict import get_json_multidict
 from pybossa import default_settings as settings
 from pybossa.extensions import *
 from pybossa.ratelimit import get_view_rate_limit
 from raven.contrib.flask import Sentry
-from pybossa.util import pretty_date
+from pybossa.util import pretty_date, handle_content_type, get_disqus_sso
 from pybossa.news import FEED_KEY as NEWS_FEED_KEY
 from pybossa.news import get_news
+from pybossa.messages import *
 
 
 def create_app(run_as_server=True):
@@ -48,14 +50,14 @@ def create_app(run_as_server=True):
     setup_babel(app)
     setup_markdown(app)
     setup_db(app)
-    setup_repositories()
+    setup_repositories(app)
     setup_exporter(app)
     mail.init_app(app)
     sentinel.init_app(app)
     signer.init_app(app)
     if app.config.get('SENTRY_DSN'):  # pragma: no cover
         Sentry(app)
-    if run_as_server:
+    if run_as_server:  # pragma: no cover
         setup_scheduled_jobs(app)
     setup_blueprints(app)
     setup_hooks(app)
@@ -68,6 +70,8 @@ def create_app(run_as_server=True):
     setup_jinja2_filters(app)
     setup_newsletter(app)
     setup_sse(app)
+    setup_json_serializer(app)
+    setup_cors(app)
     plugin_manager.init_app(app)
     plugin_manager.install_plugins()
     import pybossa.model.event_listeners
@@ -93,7 +97,15 @@ def configure_app(app):
         print "Slave binds are misssing, adding Master as slave too."
         app.config['SQLALCHEMY_BINDS'] = \
             dict(slave=app.config.get('SQLALCHEMY_DATABASE_URI'))
+    app.url_map.strict_slashes = app.config.get('STRICT_SLASHES')
 
+
+def setup_json_serializer(app):
+    app.json_encoder = JSONEncoder
+
+
+def setup_cors(app):
+    cors.init_app(app, resources=app.config.get('CORS_RESOURCES'))
 
 def setup_sse(app):
     if app.config['SSE']:
@@ -105,7 +117,7 @@ def setup_sse(app):
 
 
 def setup_theme(app):
-    """Configure theme for PyBossa app."""
+    """Configure theme for PYBOSSA app."""
     theme = app.config['THEME']
     app.template_folder = os.path.join('themes', theme, 'templates')
     app.static_folder = os.path.join('themes', theme, 'static')
@@ -164,7 +176,7 @@ def setup_db(app):
             return response_or_exc
 
 
-def setup_repositories():
+def setup_repositories(app):
     """Setup repositories."""
     from pybossa.repositories import UserRepository
     from pybossa.repositories import ProjectRepository
@@ -180,10 +192,11 @@ def setup_repositories():
     global auditlog_repo
     global webhook_repo
     global result_repo
+    language = app.config.get('FULLTEXTSEARCH_LANGUAGE')
     user_repo = UserRepository(db)
     project_repo = ProjectRepository(db)
     blog_repo = BlogRepository(db)
-    task_repo = TaskRepository(db)
+    task_repo = TaskRepository(db, language)
     auditlog_repo = AuditlogRepository(db)
     webhook_repo = WebhookRepository(db)
     result_repo = ResultRepository(db)
@@ -248,6 +261,8 @@ def setup_babel(app):
         if (lang is None or lang == '' or
                 lang.lower() not in locales):
             lang = app.config.get('DEFAULT_LOCALE') or 'en'
+        if request.headers.get('Content-Type') == 'application/json':
+            lang = 'en'
         return lang.lower()
     return babel
 
@@ -433,21 +448,35 @@ def setup_jinja(app):
 
 def setup_error_handlers(app):
     """Setup error handlers."""
+    @app.errorhandler(400)
+    def _bad_request(e):
+        response = dict(template='400.html', code=400,
+                        description=BADREQUEST)
+        return handle_content_type(response)
+
     @app.errorhandler(404)
     def _page_not_found(e):
-        return render_template('404.html'), 404
+        response = dict(template='404.html', code=404,
+                        description=NOTFOUND)
+        return handle_content_type(response)
 
     @app.errorhandler(500)
     def _server_error(e):  # pragma: no cover
-        return render_template('500.html'), 500
+        response = dict(template='500.html', code=500,
+                        description=INTERNALSERVERERROR)
+        return handle_content_type(response)
 
     @app.errorhandler(403)
     def _forbidden(e):
-        return render_template('403.html'), 403
+        response = dict(template='403.html', code=403,
+                        description=FORBIDDEN)
+        return handle_content_type(response)
 
     @app.errorhandler(401)
     def _unauthorized(e):
-        return render_template('401.html'), 401
+        response = dict(template='401.html', code=401,
+                        description=UNAUTHORIZED)
+        return handle_content_type(response)
 
 
 def setup_hooks(app):
@@ -473,6 +502,15 @@ def setup_hooks(app):
             user = user_repo.get_by(api_key=apikey)
             if user:
                 _request_ctx_stack.top.user = user
+        # Handle forms
+        request.body = request.form
+        if (request.method == 'POST' and
+                request.headers.get('Content-Type') == 'application/json' and
+                request.data):
+            try:
+                request.body = get_json_multidict(request)
+            except TypeError:
+                abort(400)
 
     @app.context_processor
     def _global_template_context():
@@ -516,7 +554,7 @@ def setup_hooks(app):
         if app.config.get('CONTACT_TWITTER'):  # pragma: no cover
             contact_twitter = app.config.get('CONTACT_TWITTER')
         else:
-            contact_twitter = 'PyBossa'
+            contact_twitter = 'PYBOSSA'
 
         # Available plugins
         plugins = plugin_manager.plugins
@@ -540,6 +578,12 @@ def setup_hooks(app):
             notify_admin=notify_admin,
             plugins=plugins)
 
+    @csrf.error_handler
+    def csrf_error_handler(reason):
+        response = dict(template='400.html', code=400,
+                        description=reason)
+        return handle_content_type(response)
+
 
 def setup_jinja2_filters(app):
     """Setup jinja2 filters."""
@@ -550,6 +594,10 @@ def setup_jinja2_filters(app):
     @app.template_filter('humanize_intword')
     def _humanize_intword(obj):
         return humanize.intword(obj)
+
+    @app.template_filter('disqus_sso')
+    def _disqus_sso(obj): # pragma: no cover
+        return get_disqus_sso(obj)
 
 
 def setup_csrf_protection(app):
@@ -604,7 +652,11 @@ def setup_scheduled_jobs(app):  # pragma: no cover
     HOUR = 60 * 60
     MONTH = 30 * (24 * HOUR)
     first_quaterly_execution = get_quarterly_date(datetime.utcnow())
-    JOBS = [dict(name=enqueue_periodic_jobs, args=['super'], kwargs={},
+    JOBS = [dict(name=enqueue_periodic_jobs, args=['email'], kwargs={},
+                 interval=(1 * MINUTE), timeout=(10 * MINUTE)),
+            dict(name=enqueue_periodic_jobs, args=['maintenance'], kwargs={},
+                 interval=(1 * MINUTE), timeout=(10 * MINUTE)),
+            dict(name=enqueue_periodic_jobs, args=['super'], kwargs={},
                  interval=(10 * MINUTE), timeout=(10 * MINUTE)),
             dict(name=enqueue_periodic_jobs, args=['high'], kwargs={},
                  interval=(1 * HOUR), timeout=(10 * MINUTE)),

@@ -1,20 +1,20 @@
 # -*- coding: utf8 -*-
-# This file is part of PyBossa.
+# This file is part of PYBOSSA.
 #
-# Copyright (C) 2015 SciFabric LTD.
+# Copyright (C) 2015 Scifabric LTD.
 #
-# PyBossa is free software: you can redistribute it and/or modify
+# PYBOSSA is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as published by
 # the Free Software Foundation, either version 3 of the License, or
 # (at your option) any later version.
 #
-# PyBossa is distributed in the hope that it will be useful,
+# PYBOSSA is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU Affero General Public License for more details.
 #
 # You should have received a copy of the GNU Affero General Public License
-# along with PyBossa.  If not, see <http://www.gnu.org/licenses/>.
+# along with PYBOSSA.  If not, see <http://www.gnu.org/licenses/>.
 
 from default import Test, db, with_context
 from nose.tools import assert_raises
@@ -95,3 +95,44 @@ class TestModelUser(Test):
         db.session.add(user)
         assert_raises(IntegrityError, db.session.commit)
         db.session.rollback()
+
+    @with_context
+    def test_user_public_attributes(self):
+        """Test public attributes works."""
+        user = User(
+            email_addr="john.doe@example.com",
+            name="johndoe",
+            pro=1,
+            fullname="John Doe",
+            locale="en")
+        public_attributes = ['created', 'name', 'fullname', 'locale', 'info',
+                             'task_runs', 'registered_ago', 'rank', 'score']
+
+        user.set_password("juandiso")
+        assert public_attributes.sort() == user.public_attributes().sort()
+        data = user.to_public_json()
+        err_msg = "There are some keys that should not be public"
+        assert data.keys().sort() == public_attributes.sort(), err_msg
+        all_attributes = user.dictize().keys()
+        s = set(public_attributes)
+        private_attributes = [x for x in all_attributes if x not in s]
+        for attr in private_attributes:
+            err_msg = "This attribute should be private %s" % attr
+            assert data.get(attr) is None, err_msg
+
+    @with_context
+    def test_user_public_info_keys(self):
+        """Test public info keys works."""
+        user = User(
+            email_addr="john.doe@example.com",
+            name="johndoe",
+            fullname="John Doe",
+            info=dict(avatar='image.png', container='foldr3', token='security'),
+            locale="en")
+        public_info_keys = ['avatar', 'container']
+        user.set_password("juandiso")
+        assert public_info_keys.sort() == user.public_info_keys().sort()
+
+        data = user.to_public_json()
+        err_msg = "There are some keys that should not be public"
+        assert data.get('info').keys().sort() == public_info_keys.sort(), err_msg

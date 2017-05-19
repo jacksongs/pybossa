@@ -1,21 +1,22 @@
 # -*- coding: utf8 -*-
-# This file is part of PyBossa.
+# This file is part of PYBOSSA.
 #
-# Copyright (C) 2015 SciFabric LTD.
+# Copyright (C) 2015 Scifabric LTD.
 #
-# PyBossa is free software: you can redistribute it and/or modify
+# PYBOSSA is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as published by
 # the Free Software Foundation, either version 3 of the License, or
 # (at your option) any later version.
 #
-# PyBossa is distributed in the hope that it will be useful,
+# PYBOSSA is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU Affero General Public License for more details.
 #
 # You should have received a copy of the GNU Affero General Public License
-# along with PyBossa.  If not, see <http://www.gnu.org/licenses/>.
+# along with PYBOSSA.  If not, see <http://www.gnu.org/licenses/>.
 
+import json
 from sqlalchemy import text
 from pybossa.core import db
 from pybossa.core import create_app, sentinel
@@ -69,6 +70,20 @@ class Test(object):
         with self.flask_app.app_context():
             rebuild_db()
             reset_all_pk_sequences()
+
+    def app_get_json(self, url, follow_redirects=False, headers=None):
+        return self.app.get(url, follow_redirects=follow_redirects,
+                            headers=headers, content_type='application/json')
+
+    def app_post_json(self, url, data=None, follow_redirects=False, headers=None):
+        if data:
+            return self.app.post(url, data=json.dumps(data),
+                                 follow_redirects=follow_redirects,
+                                 headers=headers, content_type='application/json')
+        else:
+            return self.app.post(url,
+                                 follow_redirects=follow_redirects,
+                                 headers=headers, content_type='application/json')
 
     def tearDown(self):
         with self.flask_app.app_context():

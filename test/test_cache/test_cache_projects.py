@@ -1,20 +1,20 @@
 # -*- coding: utf8 -*-
-# This file is part of PyBossa.
+# This file is part of PYBOSSA.
 #
-# Copyright (C) 2015 SciFabric LTD.
+# Copyright (C) 2015 Scifabric LTD.
 #
-# PyBossa is free software: you can redistribute it and/or modify
+# PYBOSSA is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as published by
 # the Free Software Foundation, either version 3 of the License, or
 # (at your option) any later version.
 #
-# PyBossa is distributed in the hope that it will be useful,
+# PYBOSSA is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU Affero General Public License for more details.
 #
 # You should have received a copy of the GNU Affero General Public License
-# along with PyBossa.  If not, see <http://www.gnu.org/licenses/>.
+# along with PYBOSSA.  If not, see <http://www.gnu.org/licenses/>.
 
 from default import Test, with_context
 from pybossa.cache import projects as cached_projects
@@ -23,6 +23,7 @@ from factories import UserFactory, ProjectFactory, TaskFactory, \
 from mock import patch
 import datetime
 from pybossa.core import result_repo
+from pybossa.model.project import Project
 
 
 class TestProjectsCache(Test):
@@ -142,9 +143,7 @@ class TestProjectsCache(Test):
         """Test CACHE PROJECTS get_draft returns the required info
         about each project"""
 
-        fields = ('id', 'name', 'short_name', 'info', 'created', 'description',
-                  'last_activity', 'last_activity_raw', 'overall_progress',
-                  'n_tasks', 'n_volunteers', 'owner', 'info', 'updated')
+        fields = Project().public_attributes()
 
         ProjectFactory.create(published=False)
 
@@ -152,6 +151,8 @@ class TestProjectsCache(Test):
 
         for field in fields:
             assert draft.has_key(field), "%s not in project info" % field
+            if field == 'info':
+                assert sorted(draft['info'].keys()) == sorted(Project().public_info_keys())
 
 
     def test_get_top_returns_projects_with_most_taskruns(self):

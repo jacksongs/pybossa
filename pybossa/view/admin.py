@@ -1,21 +1,21 @@
 # -* -coding: utf8 -*-
-# This file is part of PyBossa.
+# This file is part of PYBOSSA.
 #
-# Copyright (C) 2015 SciFabric LTD.
+# Copyright (C) 2015 Scifabric LTD.
 #
-# PyBossa is free software: you can redistribute it and/or modify
+# PYBOSSA is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as published by
 # the Free Software Foundation, either version 3 of the License, or
 # (at your option) any later version.
 #
-# PyBossa is distributed in the hope that it will be useful,
+# PYBOSSA is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU Affero General Public License for more details.
 #
 # You should have received a copy of the GNU Affero General Public License
-# along with PyBossa.  If not, see <http://www.gnu.org/licenses/>.
-"""Admin view for PyBossa."""
+# along with PYBOSSA.  If not, see <http://www.gnu.org/licenses/>.
+"""Admin view for PYBOSSA."""
 from rq import Queue
 from flask import Blueprint
 from flask import render_template
@@ -28,11 +28,13 @@ from flask import current_app
 from flask import Response
 from flask.ext.login import login_required, current_user
 from flask.ext.babel import gettext
+from flask_wtf.csrf import generate_csrf
 from werkzeug.exceptions import HTTPException
 from sqlalchemy.exc import ProgrammingError
 
 from pybossa.model.category import Category
-from pybossa.util import admin_required, UnicodeWriter
+from pybossa.util import admin_required, UnicodeWriter, handle_content_type
+from pybossa.util import redirect_content_type
 from pybossa.cache import projects as cached_projects
 from pybossa.cache import categories as cached_cat
 from pybossa.auth import ensure_authorized_to
@@ -66,7 +68,7 @@ def index():
     """List admin actions."""
     key = NOTIFY_ADMIN + str(current_user.id)
     sentinel.master.delete(key)
-    return render_template('/admin/index.html')
+    return handle_content_type(dict(template='/admin/index.html'))
 
 
 @blueprint.route('/featured')
@@ -74,7 +76,7 @@ def index():
 @login_required
 @admin_required
 def featured(project_id=None):
-    """List featured projects of PyBossa."""
+    """List featured projects of PYBOSSA."""
     try:
         if request.method == 'GET':
             categories = cached_cat.get_all()
@@ -85,9 +87,11 @@ def featured(project_id=None):
                     category=c.short_name,
                     page=1,
                     per_page=n_projects)
-            return render_template('/admin/projects.html',
-                                   projects=projects,
-                                   categories=categories)
+            response = dict(template = '/admin/projects.html',
+                            projects=projects,
+                            categories=categories,
+                            form=dict(csrf=generate_csrf()))
+            return handle_content_type(response)
         else:
             project = project_repo.get(project_id)
             if project:
@@ -121,8 +125,8 @@ def featured(project_id=None):
 @login_required
 @admin_required
 def users(user_id=None):
-    """Manage users of PyBossa."""
-    form = SearchForm(request.form)
+    """Manage users of PYBOSSA."""
+    form = SearchForm(request.body)
     users = [user for user in user_repo.filter_by(admin=True)
              if user.id != current_user.id]
 
@@ -134,12 +138,14 @@ def users(user_id=None):
         if not found:
             flash("<strong>Ooops!</strong> We didn't find a user "
                   "matching your query: <strong>%s</strong>" % form.user.data)
-        return render_template('/admin/users.html', found=found, users=users,
-                               title=gettext("Manage Admin Users"),
-                               form=form)
+        response = dict(template='/admin/users.html', found=found, users=users,
+                        title=gettext("Manage Admin Users"),
+                        form=form)
+        return handle_content_type(response)
 
-    return render_template('/admin/users.html', found=[], users=users,
-                           title=gettext("Manage Admin Users"), form=form)
+    response = dict(template='/admin/users.html', found=[], users=users,
+                    title=gettext("Manage Admin Users"), form=form)
+    return handle_content_type(response)
 
 
 @blueprint.route('/users/export')
@@ -212,7 +218,7 @@ def add_admin(user_id=None):
                 ensure_authorized_to('update', user)
                 user.admin = True
                 user_repo.update(user)
-                return redirect(url_for(".users"))
+                return redirect_content_type(url_for(".users"))
             else:
                 msg = "User not found"
                 return format_error(msg, 404)
@@ -233,7 +239,7 @@ def del_admin(user_id=None):
                 ensure_authorized_to('update', user)
                 user.admin = False
                 user_repo.update(user)
-                return redirect(url_for('.users'))
+                return redirect_content_type(url_for('.users'))
             else:
                 msg = "User.id not found"
                 return format_error(msg, 404)
@@ -256,7 +262,7 @@ def categories():
             form = CategoryForm()
         if request.method == 'POST':
             ensure_authorized_to('create', Category)
-            form = CategoryForm(request.form)
+            form = CategoryForm(request.body)
             del form.id
             if form.validate():
                 slug = form.name.data.lower().replace(" ", "")
@@ -275,11 +281,12 @@ def categories():
             n_projects_per_category[c.short_name] = \
                 cached_projects.n_count(c.short_name)
 
-        return render_template('admin/categories.html',
-                               title=gettext('Categories'),
-                               categories=categories,
-                               n_projects_per_category=n_projects_per_category,
-                               form=form)
+        response = dict(template='admin/categories.html',
+                        title=gettext('Categories'),
+                        categories=categories,
+                        n_projects_per_category=n_projects_per_category,
+                        form=form)
+        return handle_content_type(response)
     except Exception as e:  # pragma: no cover
         current_app.logger.error(e)
         return abort(500)
@@ -296,21 +303,23 @@ def del_category(id):
             if len(cached_cat.get_all()) > 1:
                 ensure_authorized_to('delete', category)
                 if request.method == 'GET':
-                    return render_template('admin/del_category.html',
-                                           title=gettext('Delete Category'),
-                                           category=category)
+                    response = dict(template='admin/del_category.html',
+                                    title=gettext('Delete Category'),
+                                    category=category,
+                                    form=dict(csrf=generate_csrf()))
+                    return handle_content_type(response)
                 if request.method == 'POST':
                     project_repo.delete_category(category)
                     msg = gettext("Category deleted")
                     flash(msg, 'success')
                     cached_cat.reset()
-                    return redirect(url_for(".categories"))
+                    return redirect_content_type(url_for(".categories"))
             else:
                 msg = gettext('Sorry, it is not possible to delete the only'
                               ' available category. You can modify it, '
                               ' click the edit button')
                 flash(msg, 'warning')
-                return redirect(url_for('.categories'))
+                return redirect_content_type(url_for('.categories'))
         else:
             abort(404)
     except HTTPException:
@@ -332,12 +341,13 @@ def update_category(id):
             form = CategoryForm(obj=category)
             form.populate_obj(category)
             if request.method == 'GET':
-                return render_template('admin/update_category.html',
-                                       title=gettext('Update Category'),
-                                       category=category,
-                                       form=form)
+                response = dict(template='admin/update_category.html',
+                                title=gettext('Update Category'),
+                                category=category,
+                                form=form)
+                return handle_content_type(response)
             if request.method == 'POST':
-                form = CategoryForm(request.form)
+                form = CategoryForm(request.body)
                 if form.validate():
                     slug = form.name.data.lower().replace(" ", "")
                     new_category = Category(id=form.id.data,
@@ -347,14 +357,15 @@ def update_category(id):
                     cached_cat.reset()
                     msg = gettext("Category updated")
                     flash(msg, 'success')
-                    return redirect(url_for(".categories"))
+                    return redirect_content_type(url_for(".categories"))
                 else:
                     msg = gettext("Please correct the errors")
                     flash(msg, 'success')
-                    return render_template('admin/update_category.html',
-                                           title=gettext('Update Category'),
-                                           category=category,
-                                           form=form)
+                    response = dict(template='admin/update_category.html',
+                                    title=gettext('Update Category'),
+                                    category=category,
+                                    form=form)
+                    return handle_content_type(response)
         else:
             abort(404)
     except HTTPException:
@@ -368,7 +379,7 @@ def update_category(id):
 @login_required
 @admin_required
 def dashboard():
-    """Show PyBossa Dashboard."""
+    """Show PYBOSSA Dashboard."""
     try:
         if request.args.get('refresh') == '1':
             db_jobs = get_dashboard_jobs()
@@ -388,8 +399,8 @@ def dashboard():
         returning_users_week = dashb.format_returning_users()
         update_feed = get_update_feed()
 
-        return render_template(
-            'admin/dashboard.html',
+        response = dict(
+            template='admin/dashboard.html',
             title=gettext('Dashboard'),
             active_users_last_week=active_users_last_week,
             active_anon_last_week=active_anon_last_week,
@@ -402,10 +413,12 @@ def dashboard():
             returning_users_week=returning_users_week,
             update_feed=update_feed,
             wait=False)
+        return handle_content_type(response)
     except ProgrammingError as e:
-        return render_template('admin/dashboard.html',
-                               title=gettext('Dashboard'),
-                               wait=True)
+        response = dict(template='admin/dashboard.html',
+                        title=gettext('Dashboard'),
+                        wait=True)
+        return handle_content_type(response)
     except Exception as e:  # pragma: no cover
         current_app.logger.error(e)
         return abort(500)

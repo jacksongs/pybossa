@@ -1,20 +1,20 @@
 # -*- coding: utf8 -*-
-# This file is part of PyBossa.
+# This file is part of PYBOSSA.
 #
-# Copyright (C) 2015 SciFabric LTD.
+# Copyright (C) 2015 Scifabric LTD.
 #
-# PyBossa is free software: you can redistribute it and/or modify
+# PYBOSSA is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as published by
 # the Free Software Foundation, either version 3 of the License, or
 # (at your option) any later version.
 #
-# PyBossa is distributed in the hope that it will be useful,
+# PYBOSSA is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU Affero General Public License for more details.
 #
 # You should have received a copy of the GNU Affero General Public License
-# along with PyBossa.  If not, see <http://www.gnu.org/licenses/>.
+# along with PYBOSSA.  If not, see <http://www.gnu.org/licenses/>.
 
 from pybossa.model.project import Project
 from . import BaseFactory, factory, project_repo
@@ -42,4 +42,10 @@ class ProjectFactory(BaseFactory):
     owner_id = factory.LazyAttribute(lambda project: project.owner.id)
     category = factory.SubFactory('factories.CategoryFactory')
     category_id = factory.LazyAttribute(lambda project: project.category.id)
-    info = {'task_presenter': '<div>utf8=✓</div>'}
+    info = {'task_presenter': '<div>utf8=✓</div>',
+            'thumbnail': 'img.png',
+            'container': 'container',
+            'thumbnail_url': 'http://cdn.com/container/img.png',
+            'onesignal': {'data': 'private'},
+            'onesignal_app_id': 1
+            }

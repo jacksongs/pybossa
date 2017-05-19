@@ -1,20 +1,20 @@
 # -*- coding: utf8 -*-
-# This file is part of PyBossa.
+# This file is part of PYBOSSA.
 #
-# Copyright (C) 2015 SciFabric LTD.
+# Copyright (C) 2015 Scifabric LTD.
 #
-# PyBossa is free software: you can redistribute it and/or modify
+# PYBOSSA is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as published by
 # the Free Software Foundation, either version 3 of the License, or
 # (at your option) any later version.
 #
-# PyBossa is distributed in the hope that it will be useful,
+# PYBOSSA is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU Affero General Public License for more details.
 #
 # You should have received a copy of the GNU Affero General Public License
-# along with PyBossa.  If not, see <http://www.gnu.org/licenses/>.
+# along with PYBOSSA.  If not, see <http://www.gnu.org/licenses/>.
 
 from helper import sched
 from default import with_context
@@ -40,12 +40,15 @@ class TestSched(sched.Helper):
 
         # Register
         self.register(fullname="John Doe", name="johndoe", password="p4ssw0rd")
+        self.signout()
         self.register(fullname="Marie Doe", name="mariedoe", password="dr0wss4p")
+        self.signout()
         self.signin()
 
         # Get the only task with no runs!
         res = self.app.get('api/project/1/newtask')
         data = json.loads(res.data)
+        print "Task:%s" % data['id']
         # Check that we received a clean Task
         assert data.get('info'), data
         assert not data.get('info').get('last_answer')
@@ -54,11 +57,12 @@ class TestSched(sched.Helper):
         tr = dict(project_id=data['project_id'], task_id=data['id'], info={'answer': 'No'})
         tr = json.dumps(tr)
 
-        self.app.post('/api/taskrun', data=tr)
+        res = self.app.post('/api/taskrun', data=tr)
+
         # No more tasks available for this user!
         res = self.app.get('api/project/1/newtask')
         data = json.loads(res.data)
-        assert not data
+        assert not data, data
 
         #### Get the only task now with an answer as Anonimous!
         self.signout()

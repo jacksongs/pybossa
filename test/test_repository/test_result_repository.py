@@ -1,24 +1,24 @@
 # -*- coding: utf8 -*-
-# This file is part of PyBossa.
+# This file is part of PYBOSSA.
 #
-# Copyright (C) 2015 SciFabric LTD.
+# Copyright (C) 2015 Scifabric LTD.
 #
-# PyBossa is free software: you can redistribute it and/or modify
+# PYBOSSA is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as published by
 # the Free Software Foundation, either version 3 of the License, or
 # (at your option) any later version.
 #
-# PyBossa is distributed in the hope that it will be useful,
+# PYBOSSA is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU Affero General Public License for more details.
 #
 # You should have received a copy of the GNU Affero General Public License
-# along with PyBossa.  If not, see <http://www.gnu.org/licenses/>.
+# along with PYBOSSA.  If not, see <http://www.gnu.org/licenses/>.
 # Cache global variables for timeouts
 
 from default import Test, db
-from factories import TaskFactory, TaskRunFactory
+from factories import TaskFactory, TaskRunFactory, ProjectFactory
 from pybossa.repositories import ResultRepository
 from pybossa.core import task_repo, result_repo
 from nose.tools import assert_raises
@@ -163,7 +163,7 @@ class TestResultRepository(Test):
         info = 'foo::word'
         res = self.result_repo.filter_by(info=info, fulltextsearch='1')
         assert len(res) == 1, len(res)
-        assert res[0].info['foo'] == text, res[0]
+        assert res[0][0].info['foo'] == text, res[0]
 
         res = self.result_repo.filter_by(info=info)
         assert len(res) == 0, len(res)
@@ -179,7 +179,7 @@ class TestResultRepository(Test):
         info = 'foo::word&bar|bar::foo'
         res = self.result_repo.filter_by(info=info, fulltextsearch='1')
         assert len(res) == 1, len(res)
-        assert res[0].info['foo'] == text, res[0]
+        assert res[0][0].info['foo'] == text, res[0]
 
 
     def test_info_json_search_result(self):
@@ -225,3 +225,14 @@ class TestResultRepository(Test):
         bad_object = dict()
 
         assert_raises(WrongObjectError, self.result_repo.update, bad_object)
+
+    def test_delete_results_from_project(self):
+        """Test delte_results_from_project works."""
+        project = ProjectFactory.create()
+        task = TaskFactory.create(project=project,n_answers=1)
+        taskrun = TaskRunFactory.create(task=task, project=project)
+        result = result_repo.get_by(project_id=task.project.id)
+        assert result
+        result_repo.delete_results_from_project(project)
+        result = result_repo.get_by(project_id=task.project.id)
+        assert result is None

@@ -1,20 +1,20 @@
 # -*- coding: utf8 -*-
-# This file is part of PyBossa.
+# This file is part of PYBOSSA.
 #
-# Copyright (C) 2015 SciFabric LTD.
+# Copyright (C) 2015 Scifabric LTD.
 #
-# PyBossa is free software: you can redistribute it and/or modify
+# PYBOSSA is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as published by
 # the Free Software Foundation, either version 3 of the License, or
 # (at your option) any later version.
 #
-# PyBossa is distributed in the hope that it will be useful,
+# PYBOSSA is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU Affero General Public License for more details.
 #
 # You should have received a copy of the GNU Affero General Public License
-# along with PyBossa.  If not, see <http://www.gnu.org/licenses/>.
+# along with PYBOSSA.  If not, see <http://www.gnu.org/licenses/>.
 # Cache global variables for timeouts
 
 from default import Test, db
@@ -33,6 +33,38 @@ class TestTaskRepositoryForTaskQueries(Test):
         super(TestTaskRepositoryForTaskQueries, self).setUp()
         self.task_repo = TaskRepository(db)
 
+
+    def test_orderby(self):
+        """Test orderby."""
+        project = ProjectFactory.create()
+        task1 = TaskFactory.create(fav_user_ids=[1], project=project)
+        task2 = TaskFactory.create(fav_user_ids=None, project=project)
+        task3 = TaskFactory.create(fav_user_ids=[1, 2, 3], project=project)
+
+        task = self.task_repo.filter_tasks_by(orderby='id', desc=True,
+                                              project_id=project.id, limit=1)[0]
+        assert task == task3, (task, task3)
+
+        task = self.task_repo.filter_tasks_by(orderby='id', desc=False,
+                                              project_id=project.id, limit=1)[0]
+        assert task == task1, (task, task1)
+
+
+        task = self.task_repo.filter_tasks_by(orderby='created', desc=True,
+                                              project_id=project.id)[0]
+        assert task == task3, (task.id, task3.id)
+
+        task = self.task_repo.filter_tasks_by(orderby='created', desc=False,
+                                              project_id=project.id)[0]
+        assert task == task1, (task.created, task1.created)
+
+        task = self.task_repo.filter_tasks_by(orderby='fav_user_ids', desc=True,
+                                              project_id=project.id)[0][0]
+        assert task == task3, (task.id, task3.id)
+
+        task = self.task_repo.filter_tasks_by(orderby='fav_user_ids', desc=False,
+                                              project_id=project.id)[0][0]
+        assert task == task2, (task.fav_user_ids, task2.fav_user_ids)
 
     def test_handle_info_json_plain_text(self):
         """Test handle info in JSON as plain text works."""
@@ -56,7 +88,7 @@ class TestTaskRepositoryForTaskQueries(Test):
         info = 'foo::agent'
         res = self.task_repo.filter_tasks_by(info=info, fulltextsearch='1')
         assert len(res) == 1
-        assert res[0].info['foo'] == text, res[0]
+        assert res[0][0].info['foo'] == text, res[0]
 
         res = self.task_repo.filter_tasks_by(info=info)
         assert len(res) == 0, len(res)
@@ -78,8 +110,8 @@ class TestTaskRepositoryForTaskQueries(Test):
         info = 'foo::bar|extra::four'
         res = self.task_repo.filter_tasks_by(info=info, fulltextsearch='1')
         assert len(res) == 1, len(res)
-        assert res[0].info['foo'] == 'bar', res[0]
-        assert res[0].info['extra'] == text, res[0]
+        assert res[0][0].info['foo'] == 'bar', res[0]
+        assert res[0][0].info['extra'] == text, res[0]
 
         res = self.task_repo.filter_tasks_by(info=info)
         assert len(res) == 0, len(res)
@@ -92,8 +124,8 @@ class TestTaskRepositoryForTaskQueries(Test):
         info = 'foo::bar|bar::you&agent'
         res = self.task_repo.filter_tasks_by(info=info, fulltextsearch='1')
         assert len(res) == 1, len(res)
-        assert res[0].info['foo'] == 'bar', res[0]
-        assert res[0].info['bar'] == text, res[0]
+        assert res[0][0].info['foo'] == 'bar', res[0]
+        assert res[0][0].info['bar'] == text, res[0]
 
 
     def test_handle_info_json_multiple_keys_404(self):
@@ -119,8 +151,8 @@ class TestTaskRepositoryForTaskQueries(Test):
         info = 'foo::bar|'
         res = self.task_repo.filter_tasks_by(info=info, fulltextsearch='1')
         assert len(res) == 1
-        assert res[0].info['foo'] == 'bar', res[0]
-        assert res[0].info['bar'] == 'foo', res[0]
+        assert res[0][0].info['foo'] == 'bar', res[0]
+        assert res[0][0].info['bar'] == 'foo', res[0]
 
 
     def test_handle_info_json_wrong_data(self):
@@ -400,7 +432,7 @@ class TestTaskRepositoryForTaskrunQueries(Test):
                                                                 fulltextsearch='1')
 
         assert len(retrieved_taskruns) == 1, retrieved_taskruns
-        assert taskrun in retrieved_taskruns, retrieved_taskruns
+        assert taskrun in retrieved_taskruns[0], retrieved_taskruns
 
         retrieved_taskruns = self.task_repo.filter_task_runs_by(info=info,
                                                                 user_ip='1.1.1.1')

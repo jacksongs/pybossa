@@ -1,29 +1,37 @@
 # -*- coding: utf8 -*-
-# This file is part of PyBossa.
+# This file is part of PYBOSSA.
 #
-# Copyright (C) 2015 SciFabric LTD.
+# Copyright (C) 2017 Scifabric LTD.
 #
-# PyBossa is free software: you can redistribute it and/or modify
+# PYBOSSA is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as published by
 # the Free Software Foundation, either version 3 of the License, or
 # (at your option) any later version.
 #
-# PyBossa is distributed in the hope that it will be useful,
+# PYBOSSA is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU Affero General Public License for more details.
 #
 # You should have received a copy of the GNU Affero General Public License
-# along with PyBossa.  If not, see <http://www.gnu.org/licenses/>.
-"""Help view for PyBossa."""
+# along with PYBOSSA.  If not, see <http://www.gnu.org/licenses/>.
+"""Help view for PYBOSSA."""
+from random import choice
 from flask import Blueprint
 from flask import render_template
+from pybossa.util import handle_content_type
 from pybossa.cache import projects as cached_projects
 from pybossa.cache import categories as cached_cat
-from random import choice
+from readability.readability import Document
 
 blueprint = Blueprint('help', __name__)
 
+
+@blueprint.route('/')
+def index():
+    """Render the default help page."""
+    response = dict(template='help/index.html', title='Help')
+    return handle_content_type(response)
 
 @blueprint.route('/api')
 def api():
@@ -34,31 +42,46 @@ def api():
         project_id = choice(projects)['id']
     else:  # pragma: no cover
         project_id = None
-    return render_template('help/api.html', title="Help: API",
-                           project_id=project_id)
+    response = dict(template='help/api.html',
+                    title="Help: API",
+                    project_id=project_id)
+    return handle_content_type(response)
 
 
 @blueprint.route('/license')
 def license():
     """Render help/license page."""
-    return render_template('help/license.html', title='Help: Licenses')
+    response = dict(template='help/license.html',
+                    title='Help: Licenses')
+    return handle_content_type(response)
 
 
 @blueprint.route('/terms-of-use')
 def tos():
     """Render help/terms-of-use page."""
-    return render_template('help/tos.html', title='Help: Terms of Use')
+    cleaned_up_content = Document(render_template('help/tos.html')).summary()
+    response = dict(template='help/tos.html',
+                    content=cleaned_up_content,
+                    title='Help: Terms of Use')
+    return handle_content_type(response)
 
 
 @blueprint.route('/cookies-policy')
 def cookies_policy():
     """Render help/cookies-policy page."""
-    return render_template('help/cookies_policy.html',
-                           title='Help: Cookies Policy')
+    cleaned_up_content = Document(render_template('help/cookies_policy.html')).summary()
+    response = dict(template='help/cookies_policy.html',
+                    content=cleaned_up_content,
+                    title='Help: Cookies Policy')
+    return handle_content_type(response)
 
 
 @blueprint.route('/privacy')
 def privacy():
     """Render help/privacy policy page."""
-    return render_template('help/privacy.html',
-                           title='Help: Cookies Policy')
+    # use readability to remove styling and headers
+    cleaned_up_content = Document(render_template('help/privacy.html')).summary()
+    response = dict(template='help/privacy.html',
+                    content=cleaned_up_content,
+                    title='Privacy Policy')
+    return handle_content_type(response)

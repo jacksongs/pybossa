@@ -1,20 +1,20 @@
 # -*- coding: utf8 -*-
-# This file is part of PyBossa.
+# This file is part of PYBOSSA.
 #
-# Copyright (C) 2015 SciFabric LTD.
+# Copyright (C) 2015 Scifabric LTD.
 #
-# PyBossa is free software: you can redistribute it and/or modify
+# PYBOSSA is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as published by
 # the Free Software Foundation, either version 3 of the License, or
 # (at your option) any later version.
 #
-# PyBossa is distributed in the hope that it will be useful,
+# PYBOSSA is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU Affero General Public License for more details.
 #
 # You should have received a copy of the GNU Affero General Public License
-# along with PyBossa.  If not, see <http://www.gnu.org/licenses/>.
+# along with PYBOSSA.  If not, see <http://www.gnu.org/licenses/>.
 
 
 class BlogpostAuth(object):
@@ -40,12 +40,15 @@ class BlogpostAuth(object):
         return blogpost.user_id == project.owner_id == user.id
 
     def _read(self, user, blogpost=None, project_id=None):
-        project = self._get_project(blogpost, project_id)
-        if project:
-            return (project.published or self._is_admin_or_owner(user, project))
-        if user.is_anonymous() or (blogpost is None and project_id is None):
-            return False
-        return self._is_admin_or_owner(user, project)
+        if blogpost or project_id:
+            project = self._get_project(blogpost, project_id)
+            if project:
+                return (project.published or self._is_admin_or_owner(user, project))
+            if user.is_anonymous() or (blogpost is None and project_id is None):
+                return False
+            return self._is_admin_or_owner(user, project)
+        else:
+            return True
 
     def _update(self, user, blogpost, project_id=None):
         if user.is_anonymous():

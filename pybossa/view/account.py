@@ -1,28 +1,28 @@
 # -*- coding: utf8 -*-
-# This file is part of PyBossa.
+# This file is part of PYBOSSA.
 #
-# Copyright (C) 2015 SciFabric LTD.
+# Copyright (C) 2017 Scifabric LTD.
 #
-# PyBossa is free software: you can redistribute it and/or modify
+# PYBOSSA is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as published by
 # the Free Software Foundation, either version 3 of the License, or
 # (at your option) any later version.
 #
-# PyBossa is distributed in the hope that it will be useful,
+# PYBOSSA is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU Affero General Public License for more details.
 #
 # You should have received a copy of the GNU Affero General Public License
-# along with PyBossa.  If not, see <http://www.gnu.org/licenses/>.
+# along with PYBOSSA.  If not, see <http://www.gnu.org/licenses/>.
 """
-PyBossa Account view for web projects.
+PYBOSSA Account view for web projects.
 
 This module exports the following endpoints:
-    * Accounts index: list of all registered users in PyBossa
-    * Signin: method for signin into PyBossa
-    * Signout: method for signout from PyBossa
-    * Register: method for creating a new PyBossa account
+    * Accounts index: list of all registered users in PYBOSSA
+    * Signin: method for signin into PYBOSSA
+    * Signout: method for signout from PYBOSSA
+    * Register: method for creating a new PYBOSSA account
     * Profile: method to manage user's profile (update data, reset password...)
 
 """
@@ -38,32 +38,33 @@ from rq import Queue
 
 import pybossa.model as model
 from flask.ext.babel import gettext
+from flask_wtf.csrf import generate_csrf
+from flask import jsonify
 from pybossa.core import signer, uploader, sentinel, newsletter
-from pybossa.util import Pagination
+from pybossa.util import Pagination, handle_content_type
 from pybossa.util import get_user_signup_method
+from pybossa.util import redirect_content_type
+from pybossa.util import get_avatar_url
 from pybossa.cache import users as cached_users
 from pybossa.auth import ensure_authorized_to
 from pybossa.jobs import send_mail
 from pybossa.core import user_repo
 from pybossa.feed import get_update_feed
+from pybossa.messages import *
 
 from pybossa.forms.account_view_forms import *
 
 
 blueprint = Blueprint('account', __name__)
 
-mail_queue = Queue('super', connection=sentinel.master)
+mail_queue = Queue('email', connection=sentinel.master)
 
 
-@blueprint.route('/', defaults={'page': 1})
+@blueprint.route('/')
 @blueprint.route('/page/<int:page>')
-def index(page):
-    """
-    Index page for all PyBossa registered users.
+def index(page=1):
+    """Index page for all PYBOSSA registered users."""
 
-    Returns a Jinja2 rendered template with the users.
-
-    """
     update_feed = get_update_feed()
     per_page = 24
     count = cached_users.get_total_users()
@@ -77,22 +78,23 @@ def index(page):
         user_id = None
     top_users = cached_users.get_leaderboard(current_app.config['LEADERBOARD'],
                                              user_id)
-    return render_template('account/index.html', accounts=accounts,
-                           total=count,
-                           top_users=top_users,
-                           title="Community", pagination=pagination,
-                           update_feed=update_feed)
+    tmp = dict(template='account/index.html', accounts=accounts,
+               total=count,
+               top_users=top_users,
+               title="Community", pagination=pagination,
+               update_feed=update_feed)
+    return handle_content_type(tmp)
 
 
 @blueprint.route('/signin', methods=['GET', 'POST'])
 def signin():
     """
-    Signin method for PyBossa users.
+    Signin method for PYBOSSA users.
 
     Returns a Jinja2 template with the result of signing process.
 
     """
-    form = LoginForm(request.form)
+    form = LoginForm(request.body)
     if request.method == 'POST' and form.validate():
         password = form.password.data
         email = form.email.data
@@ -124,34 +126,37 @@ def signin():
             auth['facebook'] = True
         if ('google' in current_app.blueprints):  # pragma: no cover
             auth['google'] = True
-        return render_template('account/signin.html',
-                               title="Sign in",
-                               form=form, auth=auth,
-                               next=request.args.get('next'))
+        response = dict(template='account/signin.html',
+                        title="Sign in",
+                        form=form,
+                        auth=auth,
+                        next=request.args.get('next'))
+        return handle_content_type(response)
     else:
         # User already signed in, so redirect to home page
-        return redirect(url_for("home.home"))
+        return redirect_content_type(url_for("home.home"))
 
 
 def _sign_in_user(user):
     login_user(user, remember=True)
     if newsletter.ask_user_to_subscribe(user):
-        return redirect(url_for('account.newsletter_subscribe',
-                                 next=request.args.get('next')))
-    return redirect(request.args.get("next") or url_for("home.home"))
+        return redirect_content_type(url_for('account.newsletter_subscribe',
+                                             next=request.args.get('next')))
+    return redirect_content_type(request.args.get("next") or
+                                 url_for("home.home"))
 
 
 @blueprint.route('/signout')
 def signout():
     """
-    Signout PyBossa users.
+    Signout PYBOSSA users.
 
-    Returns a redirection to PyBossa home page.
+    Returns a redirection to PYBOSSA home page.
 
     """
     logout_user()
-    flash(gettext('You are now signed out'), 'success')
-    return redirect(url_for('home.home'))
+    flash(gettext('You are now signed out'), SUCCESS)
+    return redirect_content_type(url_for('home.home'), status=SUCCESS)
 
 
 def get_email_confirmation_url(account):
@@ -186,18 +191,18 @@ def confirm_email():
         flash(msg, 'info')
         user.confirmation_email_sent = True
         user_repo.update(user)
-    return redirect(url_for('.profile', name=current_user.name))
+    return redirect_content_type(url_for('.profile', name=current_user.name))
 
 
 @blueprint.route('/register', methods=['GET', 'POST'])
 def register():
     """
-    Register method for creating a PyBossa account.
+    Register method for creating a PYBOSSA account.
 
     Returns a Jinja2 template
 
     """
-    form = RegisterForm(request.form)
+    form = RegisterForm(request.body)
     if request.method == 'POST' and form.validate():
         account = dict(fullname=form.fullname.data, name=form.name.data,
                        email_addr=form.email_addr.data,
@@ -211,18 +216,22 @@ def register():
                                         user=account, confirm_url=confirm_url))
         msg['html'] = markdown(msg['body'])
         mail_queue.enqueue(send_mail, msg)
-        return render_template('account/account_validation.html')
+        data = dict(template='account/account_validation.html',
+                    title=gettext("Account validation"),
+                    status='sent')
+        return handle_content_type(data)
     if request.method == 'POST' and not form.validate():
         flash(gettext('Please correct the errors'), 'error')
-    return render_template('account/register.html',
-                           title=gettext("Register"), form=form)
+    data = dict(template='account/register.html',
+                title=gettext("Register"), form=form)
+    return handle_content_type(data)
 
 
 @blueprint.route('/newsletter')
 @login_required
 def newsletter_subscribe():
     """
-    Register method for subscribing user to PyBossa newsletter.
+    Register method for subscribing user to PYBOSSA newsletter.
 
     Returns a Jinja2 template
 
@@ -236,14 +245,15 @@ def newsletter_subscribe():
             user_repo.update(user)
         if request.args.get('subscribe') == 'True':
             newsletter.subscribe_user(user)
-            flash("You are subscribed to our newsletter!")
-            return redirect(next_url)
+            flash("You are subscribed to our newsletter!", 'success')
+            return redirect_content_type(next_url)
         elif request.args.get('subscribe') == 'False':
-            return redirect(next_url)
+            return redirect_content_type(next_url)
         else:
-            return render_template('account/newsletter.html',
-                                   title=gettext("Subscribe to our Newsletter"),
-                                   next=next_url)
+            response = dict(template='account/newsletter.html',
+                            title=gettext("Subscribe to our Newsletter"),
+                            next=next_url)
+            return handle_content_type(response)
     else:
         return abort(404)
 
@@ -290,8 +300,11 @@ def _update_user_with_valid_email(user, email_addr):
 def redirect_profile():
     """Redirect method for profile."""
     if current_user.is_anonymous():  # pragma: no cover
-        return redirect(url_for('.signin'))
-    return redirect(url_for('.profile', name=current_user.name), 302)
+        return redirect_content_type(url_for('.signin'), status='not_signed_in')
+    if (request.headers.get('Content-Type') == 'application/json') and current_user.is_authenticated():
+        return _show_own_profile(current_user)
+    else:
+        return redirect_content_type(url_for('.profile', name=current_user.name))
 
 
 @blueprint.route('/<name>/', methods=['GET'])
@@ -312,34 +325,41 @@ def profile(name):
 
 
 def _show_public_profile(user):
-    user_dict = cached_users.get_user_summary(user.name)
-    projects_contributed = cached_users.projects_contributed_cached(user.id)
-    projects_created = cached_users.published_projects_cached(user.id)
+    user_dict = cached_users.public_get_user_summary(user.name)
+    projects_contributed = cached_users.public_projects_contributed_cached(user.id)
+    projects_created = cached_users.public_published_projects_cached(user.id)
+
     if current_user.is_authenticated() and current_user.admin:
         draft_projects = cached_users.draft_projects(user.id)
         projects_created.extend(draft_projects)
     title = "%s &middot; User Profile" % user_dict['fullname']
-    return render_template('/account/public_profile.html',
-                           title=title,
-                           user=user_dict,
-                           projects=projects_contributed,
-                           projects_created=projects_created)
+
+    response = dict(template='/account/public_profile.html',
+                    title=title,
+                    user=user_dict,
+                    projects=projects_contributed,
+                    projects_created=projects_created)
+
+    return handle_content_type(response)
 
 
 def _show_own_profile(user):
+    user_dict = cached_users.get_user_summary(user.name)
     rank_and_score = cached_users.rank_and_score(user.id)
     user.rank = rank_and_score['rank']
     user.score = rank_and_score['score']
     user.total = cached_users.get_total_users()
-    projects_contributed = cached_users.projects_contributed_cached(user.id)
+    projects_contributed = cached_users.public_projects_contributed_cached(user.id)
     projects_published, projects_draft = _get_user_projects(user.id)
     cached_users.get_user_summary(user.name)
 
-    return render_template('account/profile.html', title=gettext("Profile"),
-                           projects_contrib=projects_contributed,
-                           projects_published=projects_published,
-                           projects_draft=projects_draft,
-                           user=user)
+    response = dict(template='account/profile.html', title=gettext("Profile"),
+                    projects_contrib=projects_contributed,
+                    projects_published=projects_published,
+                    projects_draft=projects_draft,
+                    user=user_dict)
+
+    return handle_content_type(response)
 
 
 @blueprint.route('/<name>/applications')
@@ -361,16 +381,18 @@ def projects(name):
     user = user_repo.get(current_user.id)
     projects_published, projects_draft = _get_user_projects(user.id)
 
-    return render_template('account/projects.html',
-                           title=gettext("Projects"),
-                           projects_published=projects_published,
-                           projects_draft=projects_draft)
+    response = dict(template='account/projects.html',
+                    title=gettext("Projects"),
+                    projects_published=projects_published,
+                    projects_draft=projects_draft)
+    return handle_content_type(response)
 
 
 def _get_user_projects(user_id):
     projects_published = cached_users.published_projects(user_id)
     projects_draft = cached_users.draft_projects(user_id)
     return projects_published, projects_draft
+
 
 @blueprint.route('/<name>/update', methods=['GET', 'POST'])
 @login_required
@@ -392,7 +414,7 @@ def update_profile(name):
     # Extend the values
     user.rank = usr.get('rank')
     user.score = usr.get('score')
-    if request.form.get('btn') != 'Profile':
+    if request.body.get('btn') != 'Profile':
         update_form = UpdateProfileForm(formdata=None, obj=user)
     else:
         update_form = UpdateProfileForm(obj=user)
@@ -405,36 +427,40 @@ def update_profile(name):
     if request.method == 'POST':
         # Update user avatar
         succeed = False
-        if request.form.get('btn') == 'Upload':
+        if request.body.get('btn') == 'Upload':
             succeed = _handle_avatar_update(user, avatar_form)
         # Update user profile
-        elif request.form.get('btn') == 'Profile':
+        elif request.body.get('btn') == 'Profile':
             succeed = _handle_profile_update(user, update_form)
         # Update user password
-        elif request.form.get('btn') == 'Password':
+        elif request.body.get('btn') == 'Password':
             succeed = _handle_password_update(user, password_form)
         # Update user external services
-        elif request.form.get('btn') == 'External':
+        elif request.body.get('btn') == 'External':
             succeed = _handle_external_services_update(user, update_form)
         # Otherwise return 415
         else:
             return abort(415)
         if succeed:
-            return redirect(url_for('.update_profile', name=user.name))
+            return redirect_content_type(url_for('.update_profile',
+                                                 name=user.name),
+                                         status=SUCCESS)
         else:
-            return render_template('/account/update.html',
-                                   form=update_form,
-                                   upload_form=avatar_form,
-                                   password_form=password_form,
-                                   title=title_msg,
-                                   show_passwd_form=show_passwd_form)
+            data = dict(template='/account/update.html',
+                        form=update_form,
+                        upload_form=avatar_form,
+                        password_form=password_form,
+                        title=title_msg,
+                        show_passwd_form=show_passwd_form)
+            return handle_content_type(data)
 
-    return render_template('/account/update.html',
-                           form=update_form,
-                           upload_form=avatar_form,
-                           password_form=password_form,
-                           title=title_msg,
-                           show_passwd_form=show_passwd_form)
+    data = dict(template='/account/update.html',
+                form=update_form,
+                upload_form=avatar_form,
+                password_form=password_form,
+                title=title_msg,
+                show_passwd_form=show_passwd_form)
+    return handle_content_type(data)
 
 
 def _handle_avatar_update(user, avatar_form):
@@ -451,8 +477,12 @@ def _handle_avatar_update(user, avatar_form):
         # Delete previous avatar from storage
         if user.info.get('avatar'):
             uploader.delete_file(user.info['avatar'], container)
+        upload_method = current_app.config.get('UPLOAD_METHOD')
+        avatar_url = get_avatar_url(upload_method,
+                                    _file.filename, container)
         user.info = {'avatar': _file.filename,
-                             'container': container}
+                     'container': container,
+                     'avatar_url': avatar_url}
         user_repo.update(user)
         cached_users.delete_user_summary(user.name)
         flash(gettext('Your avatar has been updated! It may \
@@ -477,7 +507,7 @@ def _handle_profile_update(user, update_form):
                            name=update_form.name.data,
                            email_addr=update_form.email_addr.data)
             confirm_url = get_email_confirmation_url(account)
-            subject = ('You have updated your email in %s! Verify it' \
+            subject = ('You have updated your email in %s! Verify it'
                        % current_app.config.get('BRAND'))
             msg = dict(subject=subject,
                        recipients=[update_form.email_addr.data],
@@ -564,7 +594,7 @@ def reset_password():
     user = user_repo.get_by_name(username)
     if user.passwd_hash != userdict.get('password'):
         abort(403)
-    form = ChangePasswordForm(request.form)
+    form = ChangePasswordForm(request.body)
     if form.validate_on_submit():
         user.set_password(form.new_password.data)
         user_repo.update(user)
@@ -572,7 +602,8 @@ def reset_password():
         return _sign_in_user(user)
     if request.method == 'POST' and not form.validate():
         flash(gettext('Please correct the errors'), 'error')
-    return render_template('/account/password_reset.html', form=form)
+    response = dict(template='/account/password_reset.html', form=form)
+    return handle_content_type(response)
 
 
 @blueprint.route('/forgot-password', methods=['GET', 'POST'])
@@ -583,7 +614,7 @@ def forgot_password():
     Returns a Jinja2 template.
 
     """
-    form = ForgotPasswordForm(request.form)
+    form = ForgotPasswordForm(request.body)
     if form.validate_on_submit():
         user = user_repo.get_by(email_addr=form.email_addr.data)
         if user and user.email_addr:
@@ -633,10 +664,12 @@ def forgot_password():
     if request.method == 'POST' and not form.validate():
         flash(gettext('Something went wrong, please correct the errors on the '
               'form'), 'error')
-    return render_template('/account/password_forgot.html', form=form)
+    data = dict(template='/account/password_forgot.html',
+                form=form)
+    return handle_content_type(data)
 
 
-@blueprint.route('/<name>/resetapikey', methods=['POST'])
+@blueprint.route('/<name>/resetapikey', methods=['GET', 'POST'])
 @login_required
 def reset_api_key(name):
     """
@@ -645,13 +678,17 @@ def reset_api_key(name):
     Returns a Jinja2 template.
 
     """
-    user = user_repo.get_by_name(name)
-    if not user:
-        return abort(404)
-    ensure_authorized_to('update', user)
-    user.api_key = model.make_uuid()
-    user_repo.update(user)
-    cached_users.delete_user_summary(user.name)
-    msg = gettext('New API-KEY generated')
-    flash(msg, 'success')
-    return redirect(url_for('account.profile', name=name))
+    if request.method == 'POST':
+        user = user_repo.get_by_name(name)
+        if not user:
+            return abort(404)
+        ensure_authorized_to('update', user)
+        user.api_key = model.make_uuid()
+        user_repo.update(user)
+        cached_users.delete_user_summary(user.name)
+        msg = gettext('New API-KEY generated')
+        flash(msg, 'success')
+        return redirect_content_type(url_for('account.profile', name=name))
+    else:
+        csrf = dict(form=dict(csrf=generate_csrf()))
+        return jsonify(csrf)

@@ -1,28 +1,29 @@
 # -*- coding: utf8 -*-
-# This file is part of PyBossa.
+# This file is part of PYBOSSA.
 #
-# Copyright (C) 2015 SciFabric LTD.
+# Copyright (C) 2015 Scifabric LTD.
 #
-# PyBossa is free software: you can redistribute it and/or modify
+# PYBOSSA is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as published by
 # the Free Software Foundation, either version 3 of the License, or
 # (at your option) any later version.
 #
-# PyBossa is distributed in the hope that it will be useful,
+# PYBOSSA is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU Affero General Public License for more details.
 #
 # You should have received a copy of the GNU Affero General Public License
-# along with PyBossa.  If not, see <http://www.gnu.org/licenses/>.
+# along with PYBOSSA.  If not, see <http://www.gnu.org/licenses/>.
 
 from sqlalchemy.exc import IntegrityError
 
+from pybossa.repositories import Repository
 from pybossa.model.blogpost import Blogpost
 from pybossa.exc import WrongObjectError, DBIntegrityError
 
 
-class BlogRepository(object):
+class BlogRepository(Repository):
 
     def __init__(self, db):
         self.db = db
@@ -35,16 +36,8 @@ class BlogRepository(object):
 
     def filter_by(self, limit=None, offset=0, yielded=False, last_id=None,
                   **filters):
-        query = self.db.session.query(Blogpost).filter_by(**filters)
-        if last_id:
-            query = query.filter(Blogpost.id > last_id)
-            query = query.order_by(Blogpost.id).limit(limit)
-        else:
-            query = query.order_by(Blogpost.id).limit(limit).offset(offset)
-        if yielded:
-            limit = limit or 1
-            return query.yield_per(limit)
-        return query.all()
+        return self._filter_by(Blogpost, limit, offset, yielded, 
+                               last_id, **filters)
 
     def save(self, blogpost):
         self._validate_can_be('saved', blogpost)

@@ -1,25 +1,28 @@
 # -*- coding: utf8 -*-
-# This file is part of PyBossa.
+# This file is part of PYBOSSA.
 #
-# Copyright (C) 2015 SciFabric LTD.
+# Copyright (C) 2015 Scifabric LTD.
 #
-# PyBossa is free software: you can redistribute it and/or modify
+# PYBOSSA is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as published by
 # the Free Software Foundation, either version 3 of the License, or
 # (at your option) any later version.
 #
-# PyBossa is distributed in the hope that it will be useful,
+# PYBOSSA is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU Affero General Public License for more details.
 #
 # You should have received a copy of the GNU Affero General Public License
-# along with PyBossa.  If not, see <http://www.gnu.org/licenses/>.
+# along with PYBOSSA.  If not, see <http://www.gnu.org/licenses/>.
 
 from pybossa.jobs import get_project_jobs, create_dict_jobs, get_project_stats
+from pybossa.jobs import warm_cache
 from default import Test, with_context
 from factories import ProjectFactory
 from factories import UserFactory
+from factories import TaskRunFactory
+from factories import TaskFactory
 
 
 class TestProjectsStats(Test):
@@ -79,3 +82,13 @@ class TestProjectsStats(Test):
 
         err_msg = "There should be only 0 jobs"
         assert len(jobs) == 0, err_msg
+
+    @with_context
+    def test_warm_project(self):
+        """Test JOB warm_project works."""
+        project = ProjectFactory.create()
+        task = TaskFactory.create(n_answers=1)
+        for i in range(0,30):
+            TaskRunFactory.create(project=project, task=task)
+        res = warm_cache()
+        assert res, res

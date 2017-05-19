@@ -1,20 +1,20 @@
 # -*- coding: utf8 -*-
-# This file is part of PyBossa.
+# This file is part of PYBOSSA.
 #
-# Copyright (C) 2015 SciFabric LTD.
+# Copyright (C) 2015 Scifabric LTD.
 #
-# PyBossa is free software: you can redistribute it and/or modify
+# PYBOSSA is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as published by
 # the Free Software Foundation, either version 3 of the License, or
 # (at your option) any later version.
 #
-# PyBossa is distributed in the hope that it will be useful,
+# PYBOSSA is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU Affero General Public License for more details.
 #
 # You should have received a copy of the GNU Affero General Public License
-# along with PyBossa.  If not, see <http://www.gnu.org/licenses/>.
+# along with PYBOSSA.  If not, see <http://www.gnu.org/licenses/>.
 
 DEBUG = False
 
@@ -28,8 +28,8 @@ SECRET_KEY = 'my-session-secret'
 ITSDANGEROUSKEY = 'its-dangerous-key'
 
 ## project configuration
-BRAND = 'PyBossa'
-TITLE = 'PyBossa'
+BRAND = 'PYBOSSA'
+TITLE = 'PYBOSSA'
 COPYRIGHT = 'Set Your Institution'
 DESCRIPTION = 'Set the description in your config'
 TERMSOFUSE = 'http://okfn.org/terms-of-use/'
@@ -126,3 +126,24 @@ PRO_FEATURES = {
     'autoimporter':          True,
     'better_stats':          True
 }
+
+CORS_RESOURCES = {r"/api/*": {"origins": "*",
+                              "allow_headers": ['Content-Type',
+                                                'Authorization'],
+                              "max_age": 21600
+                              }}
+
+FAILED_JOBS_RETRIES = 3
+FAILED_JOBS_MAILS = 7
+
+FULLTEXTSEARCH_LANGUAGE = 'english'
+
+STRICT_SLASHES = True
+
+# Background jobs default time outs
+MINUTE = 60
+TIMEOUT = 10 * MINUTE
+
+# OneSignal GCM Sender ID
+# DO NOT MODIFY THIS
+GCM_SENDER_ID = "482941778795"

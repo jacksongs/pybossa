@@ -1,32 +1,118 @@
 # -*- coding: utf8 -*-
-# This file is part of PyBossa.
+# This file is part of PYBOSSA.
 #
-# Copyright (C) 2015 SciFabric LTD.
+# Copyright (C) 2015 Scifabric LTD.
 #
-# PyBossa is free software: you can redistribute it and/or modify
+# PYBOSSA is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as published by
 # the Free Software Foundation, either version 3 of the License, or
 # (at your option) any later version.
 #
-# PyBossa is distributed in the hope that it will be useful,
+# PYBOSSA is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU Affero General Public License for more details.
 #
 # You should have received a copy of the GNU Affero General Public License
-# along with PyBossa.  If not, see <http://www.gnu.org/licenses/>.
-"""Module with PyBossa utils."""
+# along with PYBOSSA.  If not, see <http://www.gnu.org/licenses/>.
+"""Module with PYBOSSA utils."""
 from datetime import timedelta, datetime
 from functools import update_wrapper
+from flask_wtf import Form
 import csv
 import codecs
 import cStringIO
-from flask import abort, request, make_response, current_app
+from flask import abort, request, make_response, current_app, url_for
+from flask import redirect, render_template, jsonify, get_flashed_messages
+from flask_wtf.csrf import generate_csrf
 from functools import wraps
 from flask.ext.login import current_user
 from math import ceil
 import json
+import base64
+import hashlib
+import hmac
+import simplejson
+import time
 
+
+def last_flashed_message():
+    """Return last flashed message by flask."""
+    messages = get_flashed_messages(with_categories=True)
+    if len(messages) > 0:
+        return messages[-1]
+    else:
+        return None
+
+
+def form_to_json(form):
+    """Return a form in JSON format."""
+    tmp = form.data
+    tmp['errors'] = form.errors
+    tmp['csrf'] = generate_csrf()
+    return tmp
+
+def user_to_json(user):
+    """Return a user in JSON format."""
+    return user.dictize()
+
+def handle_content_type(data):
+    """Return HTML or JSON based on request type."""
+    from pybossa.model.project import Project
+    if request.headers.get('Content-Type') == 'application/json':
+        message_and_status = last_flashed_message()
+        if message_and_status:
+            data['flash'] = message_and_status[1]
+            data['status'] = message_and_status[0]
+        for item in data.keys():
+            if isinstance(data[item], Form):
+                data[item] = form_to_json(data[item])
+            if isinstance(data[item], Pagination):
+                data[item] = data[item].to_json()
+            if (item == 'blogposts'):
+                data[item] = [blog.to_public_json() for blog in data[item]]
+            if (item == 'categories'):
+                tmp = []
+                for cat in data[item]:
+                    if type(cat) != dict:
+                        cat = cat.to_public_json()
+                    tmp.append(cat)
+                data[item] = tmp
+            if (item == 'active_cat'):
+                if type(data[item]) != dict:
+                    cat = data[item].to_public_json()
+                data[item] = cat
+            if (item == 'users') and type(data[item]) != str:
+                data[item] = [user_to_json(user) for user in data[item]]
+            if (item == 'users' or item =='projects' or item == 'tasks' or item == 'locs') and type(data[item]) == str: 
+                data[item] = json.loads(data[item])
+            if (item == 'found'):
+                data[item] = [user_to_json(user) for user in data[item]]
+            if (item == 'category'):
+                data[item] = data[item].to_public_json()
+
+        if 'code' in data.keys():
+            return jsonify(data), data['code']
+        else:
+            return jsonify(data)
+    else:
+        template = data['template']
+        del data['template']
+        if 'code' in data.keys():
+            error_code = data['code']
+            del data['code']
+            return render_template(template, **data), error_code
+        else:
+            return render_template(template, **data)
+
+def redirect_content_type(url, status=None):
+    data = dict(next=url)
+    if status is not None:
+        data['status'] = status
+    if request.headers.get('Content-Type') == 'application/json':
+        return handle_content_type(data)
+    else:
+        return redirect(url)
 
 def jsonpify(f):
     """Wrap JSONified output for JSONP."""
@@ -51,51 +137,6 @@ def admin_required(f):  # pragma: no cover
         else:
             return abort(403)
     return decorated_function
-
-
-# from http://flask.pocoo.org/snippets/56/
-def crossdomain(origin=None, methods=None, headers=None,
-                max_age=21600, attach_to_all=True,
-                automatic_options=True):
-    """Crossdomain decorator."""
-    if methods is not None:  # pragma: no cover
-        methods = ', '.join(sorted(x.upper() for x in methods))
-    if headers is not None and not isinstance(headers, basestring):
-        headers = ', '.join(x.upper() for x in headers)
-    if not isinstance(origin, basestring):  # pragma: no cover
-        origin = ', '.join(origin)
-    if isinstance(max_age, timedelta):  # pragma: no cover
-        max_age = max_age.total_seconds()
-
-    def get_methods():  # pragma: no cover
-        if methods is not None:
-            return methods
-
-        options_resp = current_app.make_default_options_response()
-        return options_resp.headers['allow']
-
-    def decorator(f):
-
-        def wrapped_function(*args, **kwargs):
-            if automatic_options and request.method == 'OPTIONS':  # pragma: no cover
-                resp = current_app.make_default_options_response()
-            else:
-                resp = make_response(f(*args, **kwargs))
-            if not attach_to_all and request.method != 'OPTIONS':  # pragma: no cover
-                return resp
-
-            h = resp.headers
-
-            h['Access-Control-Allow-Origin'] = origin
-            h['Access-Control-Allow-Methods'] = get_methods()
-            h['Access-Control-Max-Age'] = str(max_age)
-            if headers is not None:
-                h['Access-Control-Allow-Headers'] = headers
-            return resp
-
-        f.provide_automatic_options = False
-        return update_wrapper(wrapped_function, f)
-    return decorator
 
 
 # Fromhttp://stackoverflow.com/q/1551382
@@ -190,6 +231,14 @@ class Pagination(object):
                     yield None
                 yield num
                 last = num
+
+    def to_json(self):
+        """Return the object in JSON format."""
+        return dict(page=self.page,
+                    per_page=self.per_page,
+                    total=self.total_count,
+                    next=self.has_next,
+                    prev=self.has_prev)
 
 
 def unicode_csv_reader(unicode_csv_data, dialect=csv.excel, **kwargs):
@@ -402,3 +451,71 @@ def publish_channel(sentinel, project_short_name, data, type, private=True):
         channel = "channel_%s_%s" % ("public", project_short_name)
     msg = dict(type=type, data=data)
     sentinel.master.publish(channel, json.dumps(msg))
+
+# See https://github.com/flask-restful/flask-restful/issues/332#issuecomment-63155660
+def fuzzyboolean(value):
+    if type(value) == bool:
+        return value
+
+    if not value:
+        raise ValueError("boolean type must be non-null")
+    value = value.lower()
+    if value in ('false', 'no', 'off', 'n', '0',):
+        return False
+    if value in ('true', 'yes', 'on', 'y', '1',):
+        return True
+    raise ValueError("Invalid literal for boolean(): {}".format(value))
+
+
+def get_avatar_url(upload_method, avatar, container):
+    """Return absolute URL for avatar."""
+    if upload_method.lower() == 'rackspace':
+        return url_for('rackspace',
+                       filename=avatar,
+                       container=container)
+    else:
+        filename = container + '/' + avatar
+        return url_for('uploads.uploaded_file', filename=filename)
+
+
+def get_disqus_sso(user): # pragma: no cover
+    # create a JSON packet of our data attributes
+    # return a script tag to insert the sso message."""
+    message, timestamp, sig, pub_key = get_disqus_sso_payload(user)
+    return """<script type="text/javascript">
+    var disqus_config = function() {
+        this.page.remote_auth_s3 = "%(message)s %(sig)s %(timestamp)s";
+        this.page.api_key = "%(pub_key)s";
+    }
+    </script>""" % dict(
+        message=message,
+        timestamp=timestamp,
+        sig=sig,
+        pub_key=pub_key,
+    )
+
+
+def get_disqus_sso_payload(user):
+    """Return remote_auth_s3 and api_key for user."""
+    DISQUS_PUBLIC_KEY = current_app.config.get('DISQUS_PUBLIC_KEY')
+    DISQUS_SECRET_KEY = current_app.config.get('DISQUS_SECRET_KEY')
+    if DISQUS_PUBLIC_KEY and DISQUS_SECRET_KEY:
+        if user:
+            data = simplejson.dumps({
+                'id': user.id,
+                'username': user.name,
+                'email': user.email_addr,
+            })
+        else:
+            data = simplejson.dumps({})
+        # encode the data to base64
+        message = base64.b64encode(data)
+        # generate a timestamp for signing the message
+        timestamp = int(time.time())
+        # generate our hmac signature
+        sig = hmac.HMAC(DISQUS_SECRET_KEY, '%s %s' % (message, timestamp),
+                        hashlib.sha1).hexdigest()
+
+        return message, timestamp, sig, DISQUS_PUBLIC_KEY
+    else:
+        return None, None, None, None

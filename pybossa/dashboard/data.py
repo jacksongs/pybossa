@@ -1,20 +1,20 @@
 # -*- coding: utf8 -*-
-# This file is part of PyBossa.
+# This file is part of PYBOSSA.
 #
-# Copyright (C) 2015 SciFabric LTD.
+# Copyright (C) 2015 Scifabric LTD.
 #
-# PyBossa is free software: you can redistribute it and/or modify
+# PYBOSSA is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as published by
 # the Free Software Foundation, either version 3 of the License, or
 # (at your option) any later version.
 #
-# PyBossa is distributed in the hope that it will be useful,
+# PYBOSSA is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU Affero General Public License for more details.
 #
 # You should have received a copy of the GNU Affero General Public License
-# along with PyBossa.  If not, see <http://www.gnu.org/licenses/>.
+# along with PYBOSSA.  If not, see <http://www.gnu.org/licenses/>.
 """Dashboard queries to be used in admin dashboard view."""
 from sqlalchemy import text
 from sqlalchemy.exc import ProgrammingError
@@ -124,7 +124,7 @@ def _graph_data_from_query(results, column, label=None):
 def _format_projects_data(results):
     formatted_projects = []
     for row in results:
-        datum = dict(day=row.day, id=row.id, short_name=row.short_name,
+        datum = dict(day=row.day.strftime('%Y-%m-%d'), id=row.id, short_name=row.short_name,
                      p_name=row.name, owner_id=row.owner_id, u_name=row.u_name,
                      email_addr=row.email_addr)
         formatted_projects.append(datum)

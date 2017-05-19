@@ -1,22 +1,22 @@
 # -*- coding: utf8 -*-
-# This file is part of PyBossa.
+# This file is part of PYBOSSA.
 #
-# Copyright (C) 2015 SciFabric LTD.
+# Copyright (C) 2015 Scifabric LTD.
 #
-# PyBossa is free software: you can redistribute it and/or modify
+# PYBOSSA is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as published by
 # the Free Software Foundation, either version 3 of the License, or
 # (at your option) any later version.
 #
-# PyBossa is distributed in the hope that it will be useful,
+# PYBOSSA is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU Affero General Public License for more details.
 #
 # You should have received a copy of the GNU Affero General Public License
-# along with PyBossa.  If not, see <http://www.gnu.org/licenses/>.
+# along with PYBOSSA.  If not, see <http://www.gnu.org/licenses/>.
 """
-PyBossa api module for exposing domain object TaskRun via an API.
+PYBOSSA api module for exposing domain object TaskRun via an API.
 
 This package adds GET, POST, PUT and DELETE methods for:
     * task_runs
@@ -76,6 +76,8 @@ class TaskRunAPI(APIBase):
     def _add_user_info(self, taskrun):
         if current_user.is_anonymous():
             taskrun.user_ip = request.remote_addr
+            if taskrun.user_ip is None:
+                taskrun.user_ip = '127.0.0.1'
         else:
             taskrun.user_id = current_user.id
 

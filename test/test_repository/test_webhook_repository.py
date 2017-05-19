@@ -1,25 +1,25 @@
 # -*- coding: utf8 -*-
-# This file is part of PyBossa.
+# This file is part of PYBOSSA.
 #
-# Copyright (C) 2015 SciFabric LTD.
+# Copyright (C) 2015 Scifabric LTD.
 #
-# PyBossa is free software: you can redistribute it and/or modify
+# PYBOSSA is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as published by
 # the Free Software Foundation, either version 3 of the License, or
 # (at your option) any later version.
 #
-# PyBossa is distributed in the hope that it will be useful,
+# PYBOSSA is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU Affero General Public License for more details.
 #
 # You should have received a copy of the GNU Affero General Public License
-# along with PyBossa.  If not, see <http://www.gnu.org/licenses/>.
+# along with PYBOSSA.  If not, see <http://www.gnu.org/licenses/>.
 # Cache global variables for timeouts
 
 from default import Test, db
 from nose.tools import assert_raises
-from factories import TaskRunFactory
+from factories import TaskRunFactory, ProjectFactory
 from pybossa.repositories import WebhookRepository
 from pybossa.exc import WrongObjectError, DBIntegrityError
 from pybossa.model.webhook import Webhook
@@ -85,3 +85,14 @@ class TestWebhookRepository(Test):
         bad_object = dict()
 
         assert_raises(WrongObjectError, self.webhook_repo.save, bad_object)
+
+    def test_delete_entries_from_project(self):
+        """Test delete entries from project works."""
+        project = ProjectFactory.create()
+        wh = Webhook(project_id=project.id)
+        self.webhook_repo.save(wh)
+        self.webhook_repo.delete_entries_from_project(project)
+        res = self.webhook_repo.get_by(project_id=project.id)
+        assert res is None
+
+

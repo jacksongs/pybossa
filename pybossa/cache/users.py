@@ -1,20 +1,20 @@
 # -*- coding: utf8 -*-
-# This file is part of PyBossa.
+# This file is part of PYBOSSA.
 #
-# Copyright (C) 2015 SciFabric LTD.
+# Copyright (C) 2017 Scifabric LTD.
 #
-# PyBossa is free software: you can redistribute it and/or modify
+# PYBOSSA is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as published by
 # the Free Software Foundation, either version 3 of the License, or
 # (at your option) any later version.
 #
-# PyBossa is distributed in the hope that it will be useful,
+# PYBOSSA is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU Affero General Public License for more details.
 #
 # You should have received a copy of the GNU Affero General Public License
-# along with PyBossa.  If not, see <http://www.gnu.org/licenses/>.
+# along with PYBOSSA.  If not, see <http://www.gnu.org/licenses/>.
 """Cache module for users."""
 from sqlalchemy.sql import text
 from pybossa.core import db, timeouts
@@ -22,6 +22,7 @@ from pybossa.cache import cache, memoize, delete_memoized
 from pybossa.util import pretty_date
 from pybossa.model.user import User
 from pybossa.cache.projects import overall_progress, n_tasks, n_volunteers
+from pybossa.model.project import Project
 
 
 session = db.slave_session
@@ -45,6 +46,8 @@ def get_leaderboard(n, user_id=None):
 
     results = session.execute(sql, dict(limit=n))
 
+    u = User()
+
     top_users = []
     user_in_top = False
     for row in results:
@@ -59,7 +62,8 @@ def get_leaderboard(n, user_id=None):
             info=row.info,
             created=row.created,
             score=row.score)
-        top_users.append(user)
+        tmp = u.to_public_json(data=user)
+        top_users.append(tmp)
     if (user_id is not None):
         if not user_in_top:
             sql = text('''
@@ -87,6 +91,7 @@ def get_leaderboard(n, user_id=None):
                 info=u.info,
                 created=u.created,
                 score=-1)
+            user = u.to_public_json(data=user)
             for row in user_rank:  # pragma: no cover
                 user = dict(
                     rank=row.rank,
@@ -97,6 +102,7 @@ def get_leaderboard(n, user_id=None):
                     info=row.info,
                     created=row.created,
                     score=row.score)
+                user = u.to_public_json(data=user)
             top_users.append(user)
 
     return top_users
@@ -137,6 +143,17 @@ def get_user_summary(name):
         return user
     else:  # pragma: no cover
         return None
+
+
+@memoize(timeout=timeouts.get('USER_TIMEOUT'))
+def public_get_user_summary(name):
+    """Sanitize user summary for public usage"""
+    private_user = get_user_summary(name)
+    public_user = None
+    if private_user is not None:
+        u = User()
+        public_user = u.to_public_json(data=private_user)
+    return public_user
 
 
 @memoize(timeout=timeouts.get('USER_TIMEOUT'))
@@ -190,6 +207,24 @@ def projects_contributed_cached(user_id):
     return projects_contributed(user_id)
 
 
+def public_projects_contributed(user_id):
+    """Return projects that user_id has contributed to. Public information only"""
+    unsanitized_projects = projects_contributed(user_id)
+    public_projects = []
+    if unsanitized_projects:
+        p = Project()
+        for project in unsanitized_projects:
+            public_project = p.to_public_json(data=project)
+            public_projects.append(public_project)
+    return public_projects
+
+
+@memoize(timeout=timeouts.get('USER_TIMEOUT'))
+def public_projects_contributed_cached(user_id):
+    """Return projects contributed too (cached version)."""
+    return public_projects_contributed(user_id)
+
+
 def published_projects(user_id):
     """Return published projects for user_id."""
     sql = text('''
@@ -218,6 +253,24 @@ def published_projects(user_id):
 def published_projects_cached(user_id):
     """Return published projects (cached version)."""
     return published_projects(user_id)
+
+
+def public_published_projects(user_id):
+    """Return projects that user_id has contributed to. Public information only"""
+    unsanitized_projects = published_projects(user_id)
+    public_projects = []
+    if unsanitized_projects:
+        p = Project()
+        for project in unsanitized_projects:
+            public_project = p.to_public_json(data=project)
+            public_projects.append(public_project)
+    return public_projects
+
+
+@memoize(timeout=timeouts.get('USER_TIMEOUT'))
+def public_published_projects_cached(user_id):
+    """Return published projects (cached version)."""
+    return public_published_projects(user_id)
 
 
 def draft_projects(user_id):
@@ -270,12 +323,16 @@ def get_users_page(page, per_page=24):
                ORDER BY "user".created DESC LIMIT :limit OFFSET :offset''')
     results = session.execute(sql, dict(limit=per_page, offset=offset))
     accounts = []
+
+    u = User()
+
     for row in results:
         user = dict(id=row.id, name=row.name, fullname=row.fullname,
                     email_addr=row.email_addr, created=row.created,
                     task_runs=row.task_runs, info=row.info,
                     registered_ago=pretty_date(row.created))
-        accounts.append(user)
+        tmp = u.to_public_json(data=user)
+        accounts.append(tmp)
     return accounts
 
 

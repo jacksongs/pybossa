@@ -1,27 +1,28 @@
 # -*- coding: utf8 -*-
-# This file is part of PyBossa.
+# This file is part of PYBOSSA.
 #
-# Copyright (C) 2015 SciFabric LTD.
+# Copyright (C) 2015 Scifabric LTD.
 #
-# PyBossa is free software: you can redistribute it and/or modify
+# PYBOSSA is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as published by
 # the Free Software Foundation, either version 3 of the License, or
 # (at your option) any later version.
 #
-# PyBossa is distributed in the hope that it will be useful,
+# PYBOSSA is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU Affero General Public License for more details.
 #
 # You should have received a copy of the GNU Affero General Public License
-# along with PyBossa.  If not, see <http://www.gnu.org/licenses/>.
-"""Stats view on PyBossa."""
+# along with PYBOSSA.  If not, see <http://www.gnu.org/licenses/>.
+"""Stats view on PYBOSSA."""
 import json
 from flask import Blueprint
 from flask import render_template
 
 from pybossa.cache import site_stats
 from pybossa.cache import projects as cached_projects
+from pybossa.util import handle_content_type
 
 blueprint = Blueprint('stats', __name__)
 
@@ -78,12 +79,13 @@ def index():
                      dict(label='Tasks', value=[0, n_tasks]),
                      dict(label='Answers', value=[1, n_task_runs])])
 
-    return render_template('/stats/global.html', title=title,
-                           users=json.dumps(users),
-                           projects=json.dumps(projects),
-                           tasks=json.dumps(tasks),
-                           locs=json.dumps(locs),
-                           show_locs=show_locs,
-                           top5_users_24_hours=top5_users_24_hours,
-                           top5_projects_24_hours=top5_projects_24_hours,
-                           stats=stats)
+    response = dict(template='/stats/global.html', title=title,
+                    users=json.dumps(users),
+                    projects=json.dumps(projects),
+                    tasks=json.dumps(tasks),
+                    locs=json.dumps(locs),
+                    show_locs=show_locs,
+                    top5_users_24_hours=top5_users_24_hours,
+                    top5_projects_24_hours=top5_projects_24_hours,
+                    stats=stats)
+    return handle_content_type(response)

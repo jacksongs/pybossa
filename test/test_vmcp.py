@@ -1,25 +1,25 @@
 # -*- coding: utf8 -*-
-# This file is part of PyBossa.
+# This file is part of PYBOSSA.
 #
-# Copyright (C) 2015 SciFabric LTD.
+# Copyright (C) 2015 Scifabric LTD.
 #
-# PyBossa is free software: you can redistribute it and/or modify
+# PYBOSSA is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as published by
 # the Free Software Foundation, either version 3 of the License, or
 # (at your option) any later version.
 #
-# PyBossa is distributed in the hope that it will be useful,
+# PYBOSSA is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU Affero General Public License for more details.
 #
 # You should have received a copy of the GNU Affero General Public License
-# along with PyBossa.  If not, see <http://www.gnu.org/licenses/>.
+# along with PYBOSSA.  If not, see <http://www.gnu.org/licenses/>.
 
 import pybossa.vmcp as vmcp
-from mock import patch
+from mock import patch, mock_open
 import hashlib
-import M2Crypto
+import rsa
 import base64
 from default import assert_not_raises
 
@@ -58,7 +58,10 @@ class TestVMCP(object):
 
     def test_sign(self):
         """Test sign works."""
-        rsa = M2Crypto.RSA.gen_key(2048, 65537)
+        # rsa_pk = M2Crypto.RSA.gen_key(2048, 65537)
+        rsa_keys = rsa.newkeys(2048, 65537)
+        rsa_pk = rsa_keys[1]
+        rsa_pub = rsa_keys[0]
         salt = 'salt'
         data = {"flags": 8,
                 "name": "MyAwesomeVM",
@@ -68,21 +71,21 @@ class TestVMCP(object):
                 "vcpus": 1,
                 "version": "1.5"}
         strBuffer = vmcp.calculate_buffer(data, salt)
-        digest = hashlib.new('sha512', strBuffer).digest()
+        
+        with patch('rsa.PrivateKey.load_pkcs1', return_value=rsa_pk):
+            with patch('pybossa.vmcp.open', mock_open(read_data=''), create=True) as m:
+                out = vmcp.sign(data, salt, 'testkey')
+                err_msg = "There should be a key named signature"
+                assert out.get('signature'), err_msg
 
-        with patch('M2Crypto.RSA.load_key', return_value=rsa):
-            out = vmcp.sign(data, salt, 'key')
-            err_msg = "There should be a key named signature"
-            assert out.get('signature'), err_msg
+                err_msg = "The signature should not be empty"
+                assert out['signature'] is not None, err_msg
+                assert out['signature'] != '', err_msg
 
-            err_msg = "The signature should not be empty"
-            assert out['signature'] is not None, err_msg
-            assert out['signature'] != '', err_msg
+                err_msg = "The signature should be the same"
+                signature = base64.b64decode(out['signature'])
+                assert rsa.verify(strBuffer, signature, rsa_pub) == 1, err_msg
 
-            err_msg = "The signature should be the same"
-            signature = base64.b64decode(out['signature'])
-            assert rsa.verify(digest, signature, 'sha512') == 1, err_msg
-
-            # The output must be convertible into json object
-            import json
-            assert_not_raises(Exception, json.dumps, out)
+                # The output must be convertible into json object
+                import json
+                assert_not_raises(Exception, json.dumps, out)

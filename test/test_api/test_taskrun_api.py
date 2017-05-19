@@ -1,20 +1,20 @@
 # -*- coding: utf8 -*-
-# This file is part of PyBossa.
+# This file is part of PYBOSSA.
 #
-# Copyright (C) 2015 SciFabric LTD.
+# Copyright (C) 2015 Scifabric LTD.
 #
-# PyBossa is free software: you can redistribute it and/or modify
+# PYBOSSA is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as published by
 # the Free Software Foundation, either version 3 of the License, or
 # (at your option) any later version.
 #
-# PyBossa is distributed in the hope that it will be useful,
+# PYBOSSA is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU Affero General Public License for more details.
 #
 # You should have received a copy of the GNU Affero General Public License
-# along with PyBossa.  If not, see <http://www.gnu.org/licenses/>.
+# along with PYBOSSA.  If not, see <http://www.gnu.org/licenses/>.
 import json
 from default import with_context, mock_contributions_guard
 from nose.tools import assert_equal
@@ -26,6 +26,7 @@ from pybossa.repositories import ProjectRepository, TaskRepository
 from pybossa.repositories import ResultRepository
 from pybossa.core import db
 from pybossa.auth.errcodes import *
+from pybossa.model.task_run import TaskRun
 
 project_repo = ProjectRepository(db)
 task_repo = TaskRepository(db)
@@ -33,6 +34,10 @@ result_repo = ResultRepository(db)
 
 
 class TestTaskrunAPI(TestAPI):
+
+    def setUp(self):
+        super(TestTaskrunAPI, self).setUp()
+        db.session.query(TaskRun).delete()
 
     def create_result(self, n_results=1, n_answers=1, owner=None,
                       filter_by=False):
@@ -67,8 +72,8 @@ class TestTaskrunAPI(TestAPI):
                                     info={'answer': 'annakarenina'})
         date_new = '2019-01-01T14:37:30.642119'
         date_old = '2014-01-01T14:37:30.642119'
-        TaskRunFactory.create(created=date_new)
-        TaskRunFactory.create(created=date_old)
+        t21 = TaskRunFactory.create(created=date_new)
+        t22 = TaskRunFactory.create(created=date_old)
 
         project_ids = [project.id, project_two.id]
         # As anon, it sould return everything
@@ -79,6 +84,16 @@ class TestTaskrunAPI(TestAPI):
             assert tr['project_id'] in project_ids, tr
             assert tr['info']['answer'] == 'annakarenina', tr
 
+        # Related
+        res = self.app.get('/api/taskrun?related=True')
+        taskruns = json.loads(res.data)
+        assert len(taskruns) == 20, taskruns
+        for tr in taskruns:
+            assert tr['project_id'] in project_ids, tr
+            assert tr['info']['answer'] == 'annakarenina', tr
+            assert tr['task']['id'] == tr['task_id'], tr
+            assert tr['result'] == None, tr
+
         # The output should have a mime-type: application/json
         assert res.mimetype == 'application/json', res
 
@@ -87,6 +102,11 @@ class TestTaskrunAPI(TestAPI):
         res = self.app.get('/api/taskrun?api_key=' + user.api_key)
         taskruns = json.loads(res.data)
         assert len(taskruns) == 0, taskruns
+
+        res = self.app.get('/api/taskrun?related=True&api_key=' + user.api_key)
+        taskruns = json.loads(res.data)
+        assert len(taskruns) == 0, taskruns
+
 
         # The output should have a mime-type: application/json
         assert res.mimetype == 'application/json', res
@@ -124,13 +144,43 @@ class TestTaskrunAPI(TestAPI):
         # The output should have a mime-type: application/json
         assert res.mimetype == 'application/json', res
 
-        url = "/api/taskrun?desc=true"
+        url = "/api/taskrun?desc=true&orderby=created"
         res = self.app.get(url)
         data = json.loads(res.data)
         err_msg = "It should get the last item first."
         assert data[0]['created'] == date_new, err_msg
 
+        # Desc filter
+        url = "/api/taskrun?orderby=wrongattribute"
+        res = self.app.get(url)
+        data = json.loads(res.data)
+        err_msg = "It should be 415."
+        assert data['status'] == 'failed', data
+        assert data['status_code'] == 415, data
+        assert 'has no attribute' in data['exception_msg'], data
 
+        taskruns.append(t21.dictize())
+        taskruns.append(t22.dictize())
+
+        # Desc filter
+        url = "/api/taskrun?orderby=id"
+        res = self.app.get(url)
+        data = json.loads(res.data)
+        err_msg = "It should get the last item first."
+        taskruns_by_id = sorted(taskruns, key=lambda x: x['id'], reverse=False)
+
+        for i in range(20):
+            assert taskruns_by_id[i]['id'] == data[i]['id']
+
+        # Desc filter
+        url = "/api/taskrun?orderby=id&desc=true"
+        res = self.app.get(url)
+        data = json.loads(res.data)
+        err_msg = "It should get the last item first."
+        taskruns_by_id = sorted(taskruns, key=lambda x: x['id'], reverse=True)
+        for i in range(20):
+            print data[i]['id']
+            assert taskruns_by_id[i]['id'] == data[i]['id'], (taskruns_by_id[i]['id'], data[i]['id'])
 
     @with_context
     def test_query_taskrun(self):
@@ -1020,4 +1070,4 @@ class TestTaskrunAPI(TestAPI):
 
         result = result_repo.get_by(project_id=project.id, task_id=task.id)
 
-        assert result is None, result
+        assert result is not None, result

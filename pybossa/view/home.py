@@ -1,21 +1,21 @@
 # -*- coding: utf8 -*-
-# This file is part of PyBossa.
+# This file is part of PYBOSSA.
 #
-# Copyright (C) 2015 SciFabric LTD.
+# Copyright (C) 2015 Scifabric LTD.
 #
-# PyBossa is free software: you can redistribute it and/or modify
+# PYBOSSA is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as published by
 # the Free Software Foundation, either version 3 of the License, or
 # (at your option) any later version.
 #
-# PyBossa is distributed in the hope that it will be useful,
+# PYBOSSA is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU Affero General Public License for more details.
 #
 # You should have received a copy of the GNU Affero General Public License
-# along with PyBossa.  If not, see <http://www.gnu.org/licenses/>.
-"""Home view for PyBossa."""
+# along with PYBOSSA.  If not, see <http://www.gnu.org/licenses/>.
+"""Home view for PYBOSSA."""
 from flask import current_app, abort
 from flask.ext.login import current_user
 from pybossa.model.category import Category
@@ -24,7 +24,7 @@ from flask import render_template
 from pybossa.cache import projects as cached_projects
 from pybossa.cache import users as cached_users
 from pybossa.cache import categories as cached_cat
-from pybossa.util import rank
+from pybossa.util import rank, handle_content_type
 from jinja2.exceptions import TemplateNotFound
 
 
@@ -62,24 +62,28 @@ def home():
             d['top_users'] = cached_users.get_leaderboard(10)
     if not current_app.config['ENFORCE_PRIVACY']:
         d['top_users'] = cached_users.get_leaderboard(10)
-    return render_template('/home/index.html', **d)
+    response = dict(template='/home/index.html', **d)
+    return handle_content_type(response)
 
 
 @blueprint.route("about")
 def about():
     """Render the about template."""
-    return render_template("/home/about.html")
+    response = dict(template="/home/about.html")
+    return handle_content_type(response)
 
 
 @blueprint.route("search")
 def search():
     """Render search results page."""
-    return render_template("/home/search.html")
+    response = dict(template="/home/search.html")
+    return handle_content_type(response)
 
 @blueprint.route("results")
 def result():
     """Render a results page."""
     try:
-        return render_template("/home/_results.html")
+        response = dict(template="/home/_results.html")
+        return handle_content_type(response)
     except TemplateNotFound:
         return abort(404)

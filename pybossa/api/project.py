@@ -1,27 +1,28 @@
 # -*- coding: utf8 -*-
-# This file is part of PyBossa.
+# This file is part of PYBOSSA.
 #
-# Copyright (C) 2015 SciFabric LTD.
+# Copyright (C) 2015 Scifabric LTD.
 #
-# PyBossa is free software: you can redistribute it and/or modify
+# PYBOSSA is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as published by
 # the Free Software Foundation, either version 3 of the License, or
 # (at your option) any later version.
 #
-# PyBossa is distributed in the hope that it will be useful,
+# PYBOSSA is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU Affero General Public License for more details.
 #
 # You should have received a copy of the GNU Affero General Public License
-# along with PyBossa.  If not, see <http://www.gnu.org/licenses/>.
+# along with PYBOSSA.  If not, see <http://www.gnu.org/licenses/>.
 """
-PyBossa api module for domain object APP via an API.
+PYBOSSA api module for domain object APP via an API.
 
 This package adds GET, POST, PUT and DELETE methods for:
     * projects,
 
 """
+import copy
 from werkzeug.exceptions import BadRequest, Forbidden
 from flask.ext.login import current_user
 from api_base import APIBase
@@ -73,8 +74,27 @@ class ProjectAPI(APIBase):
                     raise Forbidden('You cannot publish a project via the API')
                 raise BadRequest("Reserved keys in payload")
 
+    def _filter_private_data(self, data):
+        tmp = copy.deepcopy(data)
+        public = Project().public_attributes()
+        public.append('link')
+        public.append('links')
+        for key in tmp.keys():
+            if key not in public:
+                del tmp[key]
+        for key in tmp['info'].keys():
+            if key not in Project().public_info_keys():
+                del tmp['info'][key]
+        return tmp
+
     def _select_attributes(self, data):
-        for key in self.private_keys:
-            if data.get(key):
-                del data[key]
-        return data
+        if current_user.is_anonymous():
+            data = self._filter_private_data(data)
+            return data
+        if (current_user.is_authenticated and
+                (current_user.id == data['owner_id'] or current_user.admin)):
+            return data
+        else:
+            data = self._filter_private_data(data)
+            return data
+

@@ -1,20 +1,20 @@
 # -*- coding: utf8 -*-
-# This file is part of PyBossa.
+# This file is part of PYBOSSA.
 #
-# Copyright (C) 2015 SciFabric LTD.
+# Copyright (C) 2015 Scifabric LTD.
 #
-# PyBossa is free software: you can redistribute it and/or modify
+# PYBOSSA is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as published by
 # the Free Software Foundation, either version 3 of the License, or
 # (at your option) any later version.
 #
-# PyBossa is distributed in the hope that it will be useful,
+# PYBOSSA is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU Affero General Public License for more details.
 #
 # You should have received a copy of the GNU Affero General Public License
-# along with PyBossa.  If not, see <http://www.gnu.org/licenses/>.
+# along with PYBOSSA.  If not, see <http://www.gnu.org/licenses/>.
 
 from sqlalchemy import Integer, Boolean, Unicode, Float, UnicodeText, Text
 from sqlalchemy.schema import Column, ForeignKey
@@ -113,3 +113,19 @@ class Project(db.Model, DomainObject):
 
     def has_presenter(self):
         return self.info.get('task_presenter') not in ('', None)
+
+    @classmethod
+    def public_attributes(self):
+        """Return a list of public attributes."""
+        return ['id', 'description', 'info', 'n_tasks', 'n_volunteers', 'name',
+                'overall_progress', 'short_name', 'created', 'description',
+                'last_activity', 'last_activity_raw', 'overall_progress',
+                'n_tasks', 'n_volunteers', 'owner', 'updated', 'featured',
+                'owner_id']
+
+    @classmethod
+    def public_info_keys(self):
+        """Return a list of public info keys."""
+        return ['container', 'thumbnail', 'thumbnail_url',
+                'task_presenter', 'tutorial', 'sched', 
+                'onesignal_app_id']

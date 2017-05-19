@@ -1,20 +1,20 @@
 # -*- coding: utf8 -*-
-# This file is part of PyBossa.
+# This file is part of PYBOSSA.
 #
-# Copyright (C) 2015 SciFabric LTD.
+# Copyright (C) 2015 Scifabric LTD.
 #
-# PyBossa is free software: you can redistribute it and/or modify
+# PYBOSSA is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as published by
 # the Free Software Foundation, either version 3 of the License, or
 # (at your option) any later version.
 #
-# PyBossa is distributed in the hope that it will be useful,
+# PYBOSSA is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU Affero General Public License for more details.
 #
 # You should have received a copy of the GNU Affero General Public License
-# along with PyBossa.  If not, see <http://www.gnu.org/licenses/>.
+# along with PYBOSSA.  If not, see <http://www.gnu.org/licenses/>.
 
 from default import Test, db, with_context
 from factories import ProjectFactory, TaskFactory, UserFactory, BlogpostFactory
@@ -40,6 +40,7 @@ class TestProjectPassword(Test):
 
 
     from pybossa.view.projects import redirect
+    @with_context
     @patch('pybossa.view.projects.redirect', wraps=redirect)
     def test_password_view_func_post(self, redirect):
         """Test when posting to /project/short_name/password and password is correct
@@ -54,7 +55,7 @@ class TestProjectPassword(Test):
         res = self.app.post(url, data={'password': 'mysecret'})
         redirect.assert_called_with(redirect_url)
 
-
+    @with_context
     def test_password_view_func_post_wrong_passwd(self):
         """Test when posting to /project/short_name/password and password is incorrect
         an error message is flashed"""
@@ -68,7 +69,7 @@ class TestProjectPassword(Test):
         res = self.app.post(url, data={'password': 'bad_passwd'})
         assert 'Sorry, incorrect password' in res.data, "No error message shown"
 
-
+    @with_context
     def test_password_view_func_no_project(self):
         """Test when receiving a request to a non-existing project, return 404"""
         get_res = self.app.get('/project/noapp/password')
@@ -77,7 +78,7 @@ class TestProjectPassword(Test):
         assert get_res.status_code == 404, get_res.status_code
         assert post_res.status_code == 404, post_res.status_code
 
-
+    @with_context
     def test_password_required_for_anonymous_contributors(self):
         """Test when an anonymous user wants to contribute to a password
         protected project is redirected to the password view"""
@@ -92,7 +93,7 @@ class TestProjectPassword(Test):
         res = self.app.get('/project/%s/task/1' % project.short_name, follow_redirects=True)
         assert 'Enter the password to contribute' in res.data
 
-
+    @with_context
     def test_password_not_required_for_anonymous_contributors(self):
         """Test when an anonymous user wants to contribute to a non-password
         protected project is able to do it"""
@@ -105,7 +106,7 @@ class TestProjectPassword(Test):
         res = self.app.get('/project/%s/task/1' % project.short_name, follow_redirects=True)
         assert 'Enter the password to contribute' not in res.data
 
-
+    @with_context
     @patch('pybossa.password_manager.current_user')
     def test_password_required_for_authenticated_contributors(self, mock_user):
         """Test when an authenticated user wants to contribute to a password
@@ -123,7 +124,7 @@ class TestProjectPassword(Test):
         res = self.app.get('/project/%s/task/1' % project.short_name, follow_redirects=True)
         assert 'Enter the password to contribute' in res.data
 
-
+    @with_context
     @patch('pybossa.password_manager.current_user')
     def test_password_not_required_for_authenticated_contributors(self, mock_user):
         """Test when an authenticated user wants to contribute to a non-password
@@ -139,7 +140,7 @@ class TestProjectPassword(Test):
         res = self.app.get('/project/%s/task/1' % project.short_name, follow_redirects=True)
         assert 'Enter the password to contribute' not in res.data
 
-
+    @with_context
     @patch('pybossa.password_manager.current_user')
     def test_password_not_required_for_admins(self, mock_user):
         """Test when an admin wants to contribute to a password
@@ -158,7 +159,7 @@ class TestProjectPassword(Test):
         res = self.app.get('/project/%s/task/1' % project.short_name, follow_redirects=True)
         assert 'Enter the password to contribute' not in res.data
 
-
+    @with_context
     @patch('pybossa.password_manager.current_user')
     def test_password_not_required_for_owner(self, mock_user):
         """Test when the owner wants to contribute to a password
@@ -178,7 +179,7 @@ class TestProjectPassword(Test):
         res = self.app.get('/project/%s/task/1' % project.short_name, follow_redirects=True)
         assert 'Enter the password to contribute' not in res.data
 
-
+    @with_context
     def test_endpoints_with_password_protection(self):
         """Test all the endpoints for "reading" a project use password protection """
         endpoints_requiring_password = (
@@ -196,7 +197,7 @@ class TestProjectPassword(Test):
                                follow_redirects=True)
             assert 'Enter the password to contribute' in res.data, endpoint
 
-
+    @with_context
     @patch('pybossa.view.projects.ensure_authorized_to')
     def test_password_protection_overrides_normal_auth(self, fake_authorizer):
         """Test if a project is password protected, that is the only authorization
@@ -210,7 +211,7 @@ class TestProjectPassword(Test):
 
         assert fake_authorizer.called == False
 
-
+    @with_context
     @patch('pybossa.view.projects.ensure_authorized_to')
     def test_normal_auth_used_if_no_password_protected(self, fake_authorizer):
         """Test if a project is password protected, that is the only authorization
@@ -222,6 +223,7 @@ class TestProjectPassword(Test):
 
         assert fake_authorizer.called == True
 
+    @with_context
     def test_get_reset_project_secret_key(self):
         """Test GET project reset key method works."""
         project = ProjectFactory.create()
@@ -229,6 +231,7 @@ class TestProjectPassword(Test):
         res = self.app.get(url)
         assert res.status_code == 405, res.status_code
 
+    @with_context
     def test_reset_project_secret_key(self):
         """Test project reset key method works."""
         project = ProjectFactory.create()

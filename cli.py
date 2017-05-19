@@ -9,6 +9,7 @@ from pybossa.core import db, create_app
 from pybossa.model.project import Project
 from pybossa.model.user import User
 from pybossa.model.category import Category
+from pybossa.util import get_avatar_url
 
 from alembic.config import Config
 from alembic import command
@@ -75,6 +76,49 @@ def markdown_db_migrate():
                            WHERE id=:id''')
                 db.engine.execute(query, long_description = new_description, id = old_desc.id)
 
+def get_thumbnail_urls():
+    """Update db records with full urls for avatar and thumbnail
+    :returns: Nothing
+
+    """
+    with app.app_context():
+        if app.config.get('SERVER_NAME'):
+            projects = db.session.query(Project).all()
+            for project in projects:
+                upload_method = app.config.get('UPLOAD_METHOD')
+                thumbnail = project.info.get('thumbnail')
+                container = project.info.get('container')
+                if (thumbnail and container):
+                    print "Updating project: %s" % project.short_name
+                    thumbnail_url = get_avatar_url(upload_method, thumbnail, container)
+                    project.info['thumbnail_url'] = thumbnail_url
+                    db.session.merge(project)
+                    db.session.commit()
+        else:
+            print "Add SERVER_NAME to your config file."
+
+def get_avatars_url():
+    """Update db records with full urls for avatar and thumbnail
+    :returns: Nothing
+
+    """
+    with app.app_context():
+        if app.config.get('SERVER_NAME'):
+            users = db.session.query(User).all()
+            for user in users:
+                upload_method = app.config.get('UPLOAD_METHOD')
+                avatar = user.info.get('avatar')
+                container = user.info.get('container')
+                if (avatar and container):
+                    print "Updating user: %s" % user.name
+                    avatar_url = get_avatar_url(upload_method, avatar, container)
+                    user.info['avatar_url'] = avatar_url
+                    db.session.merge(user)
+                    db.session.commit()
+        else:
+            print "Add SERVER_NAME to your config file."
+
+
 def fix_task_date():
     """Fix Date format in Task."""
     import re
@@ -125,7 +169,7 @@ def delete_hard_bounces():
 
 def bootstrap_avatars():
     """Download current links from user avatar and projects to real images hosted in the
-    PyBossa server."""
+    PYBOSSA server."""
     import requests
     import os
     import time

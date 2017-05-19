@@ -1,26 +1,27 @@
 # -*- coding: utf8 -*-
-# This file is part of PyBossa.
+# This file is part of PYBOSSA.
 #
-# Copyright (C) 2015 SciFabric LTD.
+# Copyright (C) 2015 Scifabric LTD.
 #
-# PyBossa is free software: you can redistribute it and/or modify
+# PYBOSSA is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as published by
 # the Free Software Foundation, either version 3 of the License, or
 # (at your option) any later version.
 #
-# PyBossa is distributed in the hope that it will be useful,
+# PYBOSSA is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU Affero General Public License for more details.
 #
 # You should have received a copy of the GNU Affero General Public License
-# along with PyBossa.  If not, see <http://www.gnu.org/licenses/>.
+# along with PYBOSSA.  If not, see <http://www.gnu.org/licenses/>.
 
 from pybossa.jobs import get_inactive_users_jobs, get_non_contributors_users_jobs
 from default import Test, with_context
 from factories import TaskRunFactory, UserFactory
 from pybossa.core import user_repo
 import datetime
+from dateutil.relativedelta import relativedelta
 import calendar
 # from mock import patch, MagicMock
 
@@ -54,19 +55,17 @@ class TestEngageUsers(Test):
         """Test JOB get inactive users returns a list of jobs."""
 
         today = datetime.datetime.today()
-        old_date = today - datetime.timedelta(days=120)
+        old_date = today + relativedelta(months=-1)
         date_str = old_date.strftime('%Y-%m-%dT%H:%M:%S.%f')
-        if calendar.isleap(today.year):
-            n_days_year = 366
-        else:
-            n_days_year = 365
-        one_year = today - datetime.timedelta(days=n_days_year)
+        # substract one year and take care of leap years
+        one_year = today + relativedelta(years=-1, leapdays=1)
         one_year_str = one_year.strftime('%Y-%m-%dT%H:%M:%S.%f')
         user = UserFactory.create()
-        # 3 months old contribution
+        user_recent = UserFactory.create()
+        # 1 month old contribution
         tr = TaskRunFactory.create(finish_time=date_str)
         # 1 year old contribution
-        TaskRunFactory.create(finish_time=one_year_str)
+        tr_year = TaskRunFactory.create(finish_time=one_year_str)
         # User with a contribution from a long time ago
         TaskRunFactory.create(finish_time="2010-08-08T18:23:45.714110",
                               user=user)
@@ -80,13 +79,12 @@ class TestEngageUsers(Test):
             jobs.append(job)
 
         msg = "There should be one job."
-        print jobs
-        assert len(jobs) == 1,  msg
+        assert len(jobs) == 1, msg
         job = jobs[0]
         args = job['args'][0]
         assert job['queue'] == 'quaterly', job['queue']
         assert len(args['recipients']) == 1
-        assert args['recipients'][0] == user.email_addr, args['recipients'][0]
+        assert args['recipients'][0] == tr_year.user.email_addr, args['recipients'][0]
         assert "UNSUBSCRIBE" in args['body']
         assert "Update" in args['html']
 

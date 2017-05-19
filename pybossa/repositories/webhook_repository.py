@@ -1,28 +1,29 @@
 # -*- coding: utf8 -*-
-# This file is part of PyBossa.
+# This file is part of PYBOSSA.
 #
-# Copyright (C) 2015 SciFabric LTD.
+# Copyright (C) 2015 Scifabric LTD.
 #
-# PyBossa is free software: you can redistribute it and/or modify
+# PYBOSSA is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as published by
 # the Free Software Foundation, either version 3 of the License, or
 # (at your option) any later version.
 #
-# PyBossa is distributed in the hope that it will be useful,
+# PYBOSSA is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU Affero General Public License for more details.
 #
 # You should have received a copy of the GNU Affero General Public License
-# along with PyBossa.  If not, see <http://www.gnu.org/licenses/>.
+# along with PYBOSSA.  If not, see <http://www.gnu.org/licenses/>.
 
 from sqlalchemy.exc import IntegrityError
-
+from sqlalchemy import text
+from pybossa.repositories import Repository
 from pybossa.model.webhook import Webhook
 from pybossa.exc import WrongObjectError, DBIntegrityError
 
 
-class WebhookRepository(object):
+class WebhookRepository(Repository):
 
     def __init__(self, db):
         self.db = db
@@ -34,9 +35,7 @@ class WebhookRepository(object):
         return self.db.session.query(Webhook).filter_by(**attributes).first()
 
     def filter_by(self, limit=None, offset=0, **filters):
-        query = self.db.session.query(Webhook).filter_by(**filters)
-        query = query.order_by(Webhook.id).limit(limit).offset(offset)
-        return query.all()
+        return self._filter_by(Webhook, limit, offset, **filters)
 
     def save(self, webhook):
         self._validate_can_be('saved', webhook)
@@ -55,6 +54,13 @@ class WebhookRepository(object):
         except IntegrityError as e:
             self.db.session.rollback()
             raise DBIntegrityError(e)
+
+    def delete_entries_from_project(self, project):
+        sql = text('''
+                   DELETE FROM webhook WHERE project_id=:project_id;
+                   ''')
+        self.db.session.execute(sql, dict(project_id=project.id))
+        self.db.session.commit()
 
     def _validate_can_be(self, action, webhook):
         if not isinstance(webhook, Webhook):
