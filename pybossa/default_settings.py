@@ -41,7 +41,7 @@ LOCALES = [('en', 'English'), ('es', u'Español'),
            ('ja', u'日本語'), ('el', u'ελληνικά')]
 
 ## Default THEME
-THEME = 'default'
+THEME = 'aphlife'
 
 ## Default number of apps per page
 APPS_PER_PAGE = 20
