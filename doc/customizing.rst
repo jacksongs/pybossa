@@ -695,6 +695,39 @@ To:
     This feature is disabled by default.
 
 
+Making extra key/value pairs in info field public
+=================================================
+
+By default PYBOSSA protects all the information the info field except for those
+values that are public like the url of the image of the project, the container 
+where that picture is stored and a few extra. While this will be more than enough
+for most projects, sometimes, a server will need to expose more information publicly
+via the info field for the User and Project Domain Objects.
+
+Imagine that you want to give badges to users. You can store that information in the
+User domain object, within the info field in a field named *badges*. While this will
+work, the API will hide all that information except for the owner. Thus, it will be impossible
+to show user's badges to anonymous people.
+
+With projects it could be the same. You want to highlight some info to anyone, but hide everything else.
+
+As PYBOSSA hides everything by default, you can always turn on which other fields from the
+info field can be shown to anonymous users, making them public. 
+
+.. note::
+
+    WARNING: be very careful. This is your responsibility, and it's not enabled by default. If you
+    expose your own private data via this field, it's your own responsibility as this is not enabled
+    by default in PYBOSSA.
+
+If you want to make some key/values public, all you have to do is add to the settings_local.py file
+the following config variables::
+
+    PROJECT_INFO_PUBLIC_FIELDS = ['key1', 'key2']
+    USER_INFO_PUBLIC_FIELDS = ['badges', 'key2', ...]
+
+Add as many as you want, need. But please, be careful about which information you disclose.
+
 Adding your own templates
 =========================
 
@@ -953,30 +986,35 @@ Web Push notifications
 
 PYBOSSA can send web push notifications to Google Chrome, Mozilla Firefox and Safari browsers. 
 
-For supporting this feature, PYBOSSA uses the Onesignal.com service, and when you have your API KEY
-in the settings.py file, PYBOSSA will automatically create a Onesignal app, and you will be able to 
-use its Javascript snippet to load the subscription button. Then, you will be able to send push notifications
-to users (anonymous and registered ones per project).
+For supporting this feature, PYBOSSA uses the Onesignal.com service. You will need an account and create
+an app for your PYBOSSA server. Then follow their documentation to download the WebPush SDK and configure
+your PYBOSSA theme.
 
-To enable this feature, just create a Onesignal account, and get your API KEY. Then write it down in the
+For more info regarding Onesignal, check their `documentation. <https://documentation.onesignal.com/docs/web-push-setup>`_
+
+.. note::
+
+    You can host the SDK files in the static folder of your theme. However you will need to modify your
+    web server (Apache or Nginx) to serve those files as from the root of your server. If this is not
+    done properly, it will not work.
+
+After you have created the app in Onesignal get the API KEY and APP ID. Then copy them and put it in your
 settings_local.py file::
 
-
-    ONESIGNAL_AUTH_KEY = 'your-key'
+    ONESIGNAL_APP_ID = 'app-id'
+    ONESIGNAL_API_KEY = 'app-key'
 
 Restart the server, and add one background worker for the *webpush* queue. This queue will handle the 
 creation of the apps, as well as sending the push notifications.
 
-Also, PYBOSSA creates the **manifest.json** file required by OneSignal for you. The manifest URL will be::
+Then you will need to update your PYBOSSA theme in order to allow your users to subscribe. As this could
+vary a lot from one project to another, we do not provide a template but some guidelines:
 
-    https://yourserver/<short_name>/manifest.json
+ * Use the JS SDK to subscribe a user to a given project using the *tags* option of Onesignal. 
+ * PYBOSSA sends notifications using those tags thanks to the *filters* option that allows us to
+   segment traffic. PYBOSSA is especting the project.id as the tag key for segmenting.
+ * The JS SDK allows you to subscribe/unsubscribe a user to a give project (not only the whole server) with
+   special methods for adding tags and deleting them. This works independently if the user is authenticated
+   or not.
 
-Use that URL for configuring the OneSignal's SDK. For more info, check their `documentation. <https://documentation.onesignal.com/docs/web-push-setup>`_
-
-.. note:: 
-
-    You will need to get the onesignal_app_id variable for each project. You can do that in your theme by extending the OneSignal 
-    script config with an Ajax call to retrieve the project information in JSON. You can achieve it by getting the two following 
-    endpoints: (i) /api/project?short_name=<short_name> or (ii) /project/<short_name>/ with application/json content type. 
-
-
+For more info regarding Onesignal JS SDK, check their `documentation. <https://documentation.onesignal.com/docs/web-push-sdk>`_

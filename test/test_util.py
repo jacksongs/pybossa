@@ -41,17 +41,6 @@ def myrender(template, **data):
 
 class TestPybossaUtil(Test):
 
-    def setUp(self):
-        super(TestPybossaUtil, self).setUp()
-        with self.flask_app.app_context():
-            db.create_all()
-            self.redis_flushall()
-
-    def tearDown(self):
-        with self.flask_app.app_context():
-            db.drop_all()
-            self.redis_flushall()
-
     # TODO: test this decorator in a more unitary way. The following tests have
     # been moved to test_api_common.py
     # def test_jsonpify(self):
@@ -531,12 +520,6 @@ class TestIsReservedName(object):
             reserved = util.is_reserved_name('project', 'new')
             assert reserved is True, reserved
             reserved = util.is_reserved_name('project', 'category')
-            assert reserved is True, reserved
-            reserved = util.is_reserved_name('project', 'page')
-            assert reserved is True, reserved
-            reserved = util.is_reserved_name('project', 'draft')
-            assert reserved is True, reserved
-            reserved = util.is_reserved_name('project', 'published')
             assert reserved is True, reserved
 
     def test_returns_false_for_valid_name_for_app_blueprint(self):

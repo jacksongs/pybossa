@@ -36,20 +36,8 @@ import pybossa
 
 
 class TestSched(sched.Helper):
-    def setUp(self):
-        super(TestSched, self).setUp()
-        self.endpoints = ['project', 'task', 'taskrun']
-        with self.flask_app.app_context():
-            db.create_all()
-            self.redis_flushall()
 
-
-    def tearDown(self):
-        with self.flask_app.app_context():
-            db.drop_all()
-            self.redis_flushall()
-            #reset_all_pk_sequences()
-
+    endpoints = ['project', 'task', 'taskrun']
 
     def get_headers_jwt(self, project):
         """Return headesr JWT token."""
@@ -427,6 +415,7 @@ class TestSched(sched.Helper):
                 assert self.is_unique(tr.external_uid, t.task_runs), err_msg
 
 
+    @with_context
     def test_newtask_breadth_orderby(self):
         """Test SCHED breadth first works with orderby."""
         project = ProjectFactory.create(info=dict(sched="breadth_first"))
@@ -465,6 +454,7 @@ class TestSched(sched.Helper):
         assert data['fav_user_ids'] == task2.fav_user_ids, data
 
 
+    @with_context
     def test_newtask_default_orderby(self):
         """Test SCHED depth first works with orderby."""
         project = ProjectFactory.create(info=dict(sched="default"))
@@ -876,7 +866,8 @@ class TestSched(sched.Helper):
                       external_uid='2xb')
             tr = json.dumps(tr)
 
-            res = self.app.post('/api/taskrun', data=tr, headers=headers)
+            res = self.app.post('/api/taskrun?external_uid=2xb',
+                                data=tr, headers=headers)
         # Get two tasks again
         res = self.app.get(url, headers=headers)
         task3 = json.loads(res.data)
@@ -934,7 +925,8 @@ class TestSched(sched.Helper):
                       external_uid='2xb')
             tr = json.dumps(tr)
 
-            res = self.app.post('/api/taskrun', data=tr, headers=headers)
+            res = self.app.post('/api/taskrun?external_uid=2xb',
+                                data=tr, headers=headers)
         # Get two tasks again
         res = self.app.get(url, headers=headers)
         tasks3 = json.loads(res.data)
@@ -1154,17 +1146,6 @@ class TestSched(sched.Helper):
 
 
 class TestGetBreadthFirst(Test):
-    def setUp(self):
-        super(TestGetBreadthFirst, self).setUp()
-        with self.flask_app.app_context():
-            self.redis_flushall()
-            db.drop_all()
-            db.create_all()
-
-    def tearDown(self):
-        with self.flask_app.app_context():
-            db.session.remove()
-
 
     def del_task_runs(self, project_id=1):
         """Deletes all TaskRuns for a given project_id"""
@@ -1313,6 +1294,7 @@ class TestGetBreadthFirst(Test):
         assert out.id == tasks[1].id, out
 
 
+    @with_context
     def _test_get_breadth_first_task_limit(self, user=None, external_uid=None):
         admin, owner, user = UserFactory.create_batch(3)
         project = ProjectFactory.create(owner=owner, info=dict(sched='breadth_first'))
@@ -1400,6 +1382,7 @@ class TestGetBreadthFirst(Test):
         db.session.commit()
 
 class TestBreadthFirst(Test):
+
     def setUp(self):
         super(TestBreadthFirst, self).setUp()
         with self.flask_app.app_context():

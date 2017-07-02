@@ -32,7 +32,10 @@ class DomainObject(object):
     def dictize(self):
         out = {}
         for col in self.__table__.c:
-            out[col.name] = getattr(self, col.name)
+            obj = getattr(self, col.name)
+            if isinstance(obj, datetime.datetime):
+                obj = obj.isoformat()
+            out[col.name] = obj
         return out
 
     def info_public_keys(self, data=None):
@@ -101,9 +104,9 @@ def update_project_timestamp(mapper, conn, target):
                  (make_timestamp(), target.project_id))
     conn.execute(sql_query)
 
+
 def update_target_timestamp(mapper, conn, target):
     """Update target update column."""
     sql_query = ("update %s set updated='%s' where id=%s" %
                  (target.__tablename__, make_timestamp(), target.id))
     conn.execute(sql_query)
-

@@ -28,7 +28,6 @@ from pybossa.repositories import ProjectRepository
 from pybossa.repositories import TaskRepository
 from pybossa.repositories import ResultRepository
 from pybossa.model.project import Project
-from pybossa.jobs import create_onesignal_app
 project_repo = ProjectRepository(db)
 task_repo = TaskRepository(db)
 result_repo = ResultRepository(db)
@@ -327,8 +326,7 @@ class TestProjectAPI(TestAPI):
 
 
     @with_context
-    @patch('pybossa.model.event_listeners.webpush_queue.enqueue')
-    def test_project_post(self, mock_onesignal):
+    def test_project_post(self):
         """Test API project creation and auth"""
         users = UserFactory.create_batch(2)
         CategoryFactory.create()
@@ -371,8 +369,6 @@ class TestProjectAPI(TestAPI):
         ## Test that a default category is assigned to the project
         assert out.category_id, "No category assigned to project"
         id_ = out.id
-        ## Test that onesignal is called
-        mock_onesignal.assert_called_with(create_onesignal_app, out.id)
 
         # test re-create should fail
         res = self.app.post('/api/project?api_key=' + users[1].api_key,
@@ -406,7 +402,7 @@ class TestProjectAPI(TestAPI):
 
         # test update
         data = {'name': 'My New Title', 'links': 'hateoas'}
-        data = dict(name='My New Title', links='hateoas', info=dict(onesignal='new', onesignal_app_id=1))
+        data = dict(name='My New Title', links='hateoas', info={})
         datajson = json.dumps(data)
         ## anonymous
         res = self.app.put('/api/project/%s' % id_, data=datajson)
@@ -438,8 +434,6 @@ class TestProjectAPI(TestAPI):
         out = json.loads(res.data)
         assert out.get('status') is None, error
         assert out.get('id') == id_, error
-        assert out.get('info')['onesignal_app_id'] == 1, error
-        assert out.get('info')['onesignal'] == 'new', error
 
         # without hateoas links
         del data['links']
@@ -466,8 +460,6 @@ class TestProjectAPI(TestAPI):
         out = json.loads(res.data)
         assert out.get('status') is None, error
         assert out.get('id') == id_, error
-        assert out.get('info')['onesignal_app_id'] == 1, error
-        assert out.get('info')['onesignal'] == 'new', error
 
         # With wrong id
         res = self.app.put('/api/project/5000?api_key=%s' % users[1].api_key,
@@ -888,6 +880,7 @@ class TestProjectAPI(TestAPI):
         res = self.app.get(url)
         assert res.data == '{}', res.data
 
+    @with_context
     @patch('pybossa.repositories.project_repository.uploader')
     def test_project_delete_deletes_zip_files(self, uploader):
         """Test API project delete deletes also zip files of tasks and taskruns"""
@@ -902,6 +895,7 @@ class TestProjectAPI(TestAPI):
                     call('1_project1_task_run_csv.zip', 'user_1')]
         assert uploader.delete_file.call_args_list == expected
 
+    @with_context
     def test_project_post_with_reserved_fields_returns_error(self):
         user = UserFactory.create()
         CategoryFactory.create()
@@ -924,6 +918,7 @@ class TestProjectAPI(TestAPI):
         error = json.loads(res.data)
         assert error['exception_msg'] == "Reserved keys in payload", error
 
+    @with_context
     def test_project_put_with_reserved_returns_error(self):
         user = UserFactory.create()
         project = ProjectFactory.create(owner=user)
@@ -937,6 +932,7 @@ class TestProjectAPI(TestAPI):
         error = json.loads(res.data)
         assert error['exception_msg'] == "Reserved keys in payload", error
 
+    @with_context
     def test_project_post_with_published_attribute_is_forbidden(self):
         user = UserFactory.create()
         data = dict(
@@ -955,6 +951,7 @@ class TestProjectAPI(TestAPI):
         assert res.status_code == 403, res.status_code
         assert error_msg == 'You cannot publish a project via the API', res.data
 
+    @with_context
     def test_project_update_with_published_attribute_is_forbidden(self):
         user = UserFactory.create()
         project = ProjectFactory.create(owner=user)
@@ -968,6 +965,7 @@ class TestProjectAPI(TestAPI):
         assert res.status_code == 403, res.status_code
         assert error_msg == 'You cannot publish a project via the API', res.data
 
+    @with_context
     def test_project_delete_with_results(self):
         """Test API delete project with results cannot be deleted."""
         result = self.create_result()
@@ -978,6 +976,7 @@ class TestProjectAPI(TestAPI):
         res = self.app.delete(url)
         assert_equal(res.status, '403 FORBIDDEN', res.status)
 
+    @with_context
     def test_project_delete_with_results_var(self):
         """Test API delete project with results cannot be deleted by admin."""
         root = UserFactory.create(admin=True)

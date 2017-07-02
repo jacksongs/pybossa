@@ -32,9 +32,10 @@ from pybossa.model.task_run import TaskRun
 from pybossa.model.webhook import Webhook
 from pybossa.model.user import User
 from pybossa.model.result import Result
-from pybossa.core import result_repo
+from pybossa.model.counter import Counter
+from pybossa.core import result_repo, db
 from pybossa.jobs import webhook, notify_blog_users
-from pybossa.jobs import create_onesignal_app, push_notification
+from pybossa.jobs import push_notification
 
 from pybossa.core import sentinel
 
@@ -92,12 +93,13 @@ def add_project_event(mapper, conn, target):
     tmp = Project().to_public_json(tmp)
     obj.update(tmp)
     update_feed(obj)
-
-
-@event.listens_for(Project, 'after_insert')
-def add_onesignal_app(mapper, conn, target):
-    """Update PYBOSSA project with onesignal app."""
-    webpush_queue.enqueue(create_onesignal_app, target.id)
+    # Create a clean projectstats object for it
+    sql_query = """INSERT INTO project_stats 
+                   (project_id, n_tasks, n_task_runs, n_results, n_volunteers,
+                   n_completed_tasks, overall_progress, average_time,
+                   n_blogposts, last_activity, info)
+                   VALUES (%s, 0, 0, 0, 0, 0, 0, 0, 0, 0, '{}');""" % (target.id)
+    conn.execute(sql_query)
 
 
 @event.listens_for(Task, 'after_insert')
@@ -122,7 +124,7 @@ def add_task_event(mapper, conn, target):
 def add_user_event(mapper, conn, target):
     """Update PYBOSSA feed with new user."""
     obj = target.to_public_json()
-    obj['action_updated']='User'
+    obj['action_updated'] = 'User'
     update_feed(obj)
 
 
@@ -143,9 +145,10 @@ def add_user_contributed_to_feed(conn, user_id, project_obj):
         update_feed(tmp)
 
 
-def is_task_completed(conn, task_id):
+def is_task_completed(conn, task_id, project_id):
     sql_query = ('select count(id) from task_run \
-                 where task_run.task_id=%s') % task_id
+                 where task_run.task_id=%s and \
+                 task_run.project_id=%s') % (task_id, project_id)
     n_answers = conn.scalar(sql_query)
     sql_query = ('select n_answers from task \
                  where task.id=%s') % task_id
@@ -228,7 +231,7 @@ def on_taskrun_submit(mapper, conn, target):
     project_public['action_updated'] = 'TaskCompleted'
 
     add_user_contributed_to_feed(conn, target.user_id, project_public)
-    if is_task_completed(conn, target.task_id):
+    if is_task_completed(conn, target.task_id, target.project_id):
         update_task_state(conn, target.task_id)
         update_feed(project_public)
         result_id = create_result(conn, target.project_id, target.task_id)
@@ -253,9 +256,35 @@ def update_timestamp(mapper, conn, target):
     """Update domain object with timestamp."""
     update_target_timestamp(mapper, conn, target)
 
+@event.listens_for(Blogpost, 'after_update')
+def update_timestamp(mapper, conn, target):
+    """Update domain object with timestamp."""
+    update_target_timestamp(mapper, conn, target)
+
 
 @event.listens_for(User, 'before_insert')
 def make_admin(mapper, conn, target):
     users = conn.scalar('select count(*) from "user"')
     if users == 0:
         target.admin = True
+
+@event.listens_for(Task, 'after_insert')
+def create_zero_counter(mapper, conn, target):
+    sql_query = ("insert into counter(created, project_id, task_id, n_task_runs) \
+                 VALUES (TIMESTAMP '%s', %s, %s, 0)"
+                 % (make_timestamp(), target.project_id, target.id))
+    conn.execute(sql_query)
+
+@event.listens_for(TaskRun, 'after_insert')
+def increase_task_counter(mapper, conn, target):
+    sql_query = ("insert into counter(created, project_id, task_id, n_task_runs) \
+                 VALUES (TIMESTAMP '%s', %s, %s, 1)"
+                 % (make_timestamp(), target.project_id, target.task_id))
+    conn.execute(sql_query)
+
+@event.listens_for(TaskRun, 'after_delete')
+def decrease_task_counter(mapper, conn, target):
+    sql_query = ("insert into counter(created, project_id, task_id, n_task_runs) \
+                 VALUES (TIMESTAMP '%s', %s, %s, -1)"
+                 % (make_timestamp(), target.project_id, target.task_id))
+    conn.execute(sql_query)

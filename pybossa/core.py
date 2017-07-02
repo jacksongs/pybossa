@@ -180,26 +180,32 @@ def setup_repositories(app):
     """Setup repositories."""
     from pybossa.repositories import UserRepository
     from pybossa.repositories import ProjectRepository
+    from pybossa.repositories import AnnouncementRepository
     from pybossa.repositories import BlogRepository
     from pybossa.repositories import TaskRepository
     from pybossa.repositories import AuditlogRepository
     from pybossa.repositories import WebhookRepository
     from pybossa.repositories import ResultRepository
+    from pybossa.repositories import HelpingMaterialRepository
     global user_repo
     global project_repo
+    global announcement_repo
     global blog_repo
     global task_repo
     global auditlog_repo
     global webhook_repo
     global result_repo
+    global helping_repo
     language = app.config.get('FULLTEXTSEARCH_LANGUAGE')
     user_repo = UserRepository(db)
     project_repo = ProjectRepository(db)
+    announcement_repo = AnnouncementRepository(db)
     blog_repo = BlogRepository(db)
     task_repo = TaskRepository(db, language)
     auditlog_repo = AuditlogRepository(db)
     webhook_repo = WebhookRepository(db)
     result_repo = ResultRepository(db)
+    helping_repo = HelpingMaterialRepository(db)
 
 
 def setup_error_email(app):
@@ -273,6 +279,7 @@ def setup_blueprints(app):
     from pybossa.view.account import blueprint as account
     from pybossa.view.projects import blueprint as projects
     from pybossa.view.admin import blueprint as admin
+    from pybossa.view.announcements import blueprint as announcements
     from pybossa.view.leaderboard import blueprint as leaderboard
     from pybossa.view.stats import blueprint as stats
     from pybossa.view.help import blueprint as helper
@@ -285,6 +292,7 @@ def setup_blueprints(app):
                   {'handler': account, 'url_prefix': '/account'},
                   {'handler': projects, 'url_prefix': '/project'},
                   {'handler': admin, 'url_prefix': '/admin'},
+                  {'handler': announcements, 'url_prefix': '/announcements'},
                   {'handler': leaderboard, 'url_prefix': '/leaderboard'},
                   {'handler': helper, 'url_prefix': '/help'},
                   {'handler': stats, 'url_prefix': '/stats'},
