@@ -27,6 +27,8 @@ from flask import redirect, render_template, jsonify, get_flashed_messages
 from flask_wtf.csrf import generate_csrf
 from functools import wraps
 from flask.ext.login import current_user
+from sqlalchemy import text
+from sqlalchemy.exc import ProgrammingError
 from math import ceil
 import json
 import base64
@@ -69,6 +71,8 @@ def handle_content_type(data):
                 data[item] = form_to_json(data[item])
             if isinstance(data[item], Pagination):
                 data[item] = data[item].to_json()
+            if (item == 'announcements'):
+                data[item] = [announcement.to_public_json() for announcement in data[item]]
             if (item == 'blogposts'):
                 data[item] = [blog.to_public_json() for blog in data[item]]
             if (item == 'categories'):
@@ -344,7 +348,8 @@ def get_user_id_or_ip():
     user_id = current_user.id if current_user.is_authenticated() else None
     user_ip = request.remote_addr or "127.0.0.1" \
         if current_user.is_anonymous() else None
-    return dict(user_id=user_id, user_ip=user_ip)
+    external_uid = request.args.get('external_uid')
+    return dict(user_id=user_id, user_ip=user_ip, external_uid=external_uid)
 
 
 def with_cache_disabled(f):
@@ -519,3 +524,26 @@ def get_disqus_sso_payload(user):
         return message, timestamp, sig, DISQUS_PUBLIC_KEY
     else:
         return None, None, None, None
+
+
+def exists_materialized_view(db, view):
+    sql = text('''SELECT EXISTS (SELECT relname FROM pg_class WHERE
+               relname = :view);''')
+    results = db.slave_session.execute(sql, dict(view=view))
+    for result in results:
+        return result.exists
+    return False
+
+
+def refresh_materialized_view(db, view):
+    try:
+        sql = text('REFRESH MATERIALIZED VIEW CONCURRENTLY %s' % view)
+        db.session.execute(sql)
+        db.session.commit()
+        return "Materialized view refreshed concurrently"
+    except ProgrammingError:
+        sql = text('REFRESH MATERIALIZED VIEW %s' % view)
+        db.session.rollback()
+        db.session.execute(sql)
+        db.session.commit()
+        return "Materialized view refreshed"

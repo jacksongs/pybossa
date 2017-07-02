@@ -45,3 +45,7 @@ htmlcov/*
 pybossa/themes/*
 .vscode/
 tags
+
+pybossa/themes/default
+
+doc/_themes/sphinx-theme-pybossa/

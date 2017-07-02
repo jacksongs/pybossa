@@ -22,15 +22,47 @@ Exporter module for exporting tasks and tasks results out of PYBOSSA
 
 import os
 import zipfile
-from pybossa.core import uploader
+from pybossa.core import uploader, task_repo, result_repo
 from pybossa.uploader import local
 from unidecode import unidecode
 from flask import url_for, safe_join, send_file, redirect
 from werkzeug.utils import secure_filename
+from flatten_json import flatten
 
 class Exporter(object):
 
     """Abstract generic exporter class."""
+
+    repositories = dict(task=[task_repo, 'filter_tasks_by'],
+                        task_run=[task_repo, 'filter_task_runs_by'],
+                        result=[result_repo, 'filter_by'])
+
+    def _get_data(self, table, project_id, flat=False, info_only=False):
+        """Get the data for a given table."""
+        repo, query = self.repositories[table]
+        data = getattr(repo, query)(project_id=project_id)
+        if info_only:
+            if flat:
+                tmp = []
+                for row in data:
+                    inf = row.dictize()['info']
+                    if inf and type(inf) == dict:
+                        tmp.append(flatten(inf))
+                    else:
+                        tmp.append({'info': inf})
+            else:
+                tmp = []
+                for row in data:
+                    if row.dictize()['info']:
+                        tmp.append(row.dictize()['info'])
+                    else:
+                        tmp.append({})
+        else:
+            if flat:
+                tmp = [flatten(row.dictize()) for row in data]
+            else:
+                tmp = [row.dictize() for row in data]
+        return tmp
 
     def _project_name_latin_encoded(self, project):
         """project short name for later HTML header usage"""

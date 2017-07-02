@@ -23,6 +23,7 @@ These objects are an abstraction layer between the ORM and the application:
 
     * user_repo
     * project_repo
+    * announcement_repo
     * blog_repo
     * task_repo
     * auditlog_repo
@@ -187,16 +188,20 @@ class Repository(object):
 
 from project_repository import ProjectRepository
 from user_repository import UserRepository
+from announcement_repository import AnnouncementRepository
 from blog_repository import BlogRepository
 from task_repository import TaskRepository
 from auditlog_repository import AuditlogRepository
 from webhook_repository import WebhookRepository
 from result_repository import ResultRepository
+from helping_repository import HelpingMaterialRepository
 
 assert ProjectRepository
 assert UserRepository
+assert AnnouncementRepository
 assert BlogRepository
 assert TaskRepository
 assert AuditlogRepository
 assert WebhookRepository
 assert ResultRepository
+assert HelpingMaterialRepository

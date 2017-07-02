@@ -16,9 +16,6 @@ It expects and returns JSON.
 .. autoclass:: pybossa.api.UserAPI
    :members:
 
-.. autoclass:: pybossa.api.AppAPI
-   :members:
-
 .. autoclass:: pybossa.api.ProjectAPI
    :members:
 
@@ -41,6 +38,9 @@ It expects and returns JSON.
    :members:
 
 .. autoclass:: pybossa.api.FavoritesAPI
+   :members:
+
+.. autoclass:: pybossa.api.HelpingMaterial
    :members:
 
 
@@ -568,7 +568,7 @@ PYBOSSA. Then, once the user has completed the task you will be able to submit i
 this::
 
     HEADERS Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiYWRtaW4iOnRydWV9.TJVA95OrM7E2cBab30RMHrHDcEfxjoYZgeFONFh7HgQ
-    POST http://{pybossa-site-url}/api/taskrun
+    POST http://{pybossa-site-url}/api/taskrun?external_uid=1xa
 
 
 .. note::
@@ -2015,9 +2015,11 @@ for another project where you are not the owner:
       "title": "Project: flickr678 &middot; Contribute"
     }
 
+
 Leaderboard
 ~~~~~~~~~~~
 **Endpoint: /leaderboard/**
+**Endpoint: /leaderboard/window/<int:window>**
 
 *Allowed methods*: **GET**
 
@@ -2026,6 +2028,11 @@ Leaderboard
 Shows you the top 20 contributors rank in a sorted leaderboard.
 If you are logged in you will also get the rank of yourself even when you are
 not visible on the top public leaderboard.
+
+By default the window is zero, adding the authenticated user to the bottom of the
+top 20, so the user can know the rank. If you want, you can use a window to show
+the previous and next users taking into account authenticated user rank. For example,
+you can get the previous 3 and next 3 accessing this URL: /leaderboard/window/3.
 
 * **template**: Jinja2 template.
 * **title**: the title for the endpoint.
@@ -2069,6 +2076,232 @@ for logged in user JohnDoe (normally not visible in public leaderboard):
                 "score": 56
             }
         ]
+    }
+
+
+Announcements
+~~~~~~~~~~~~~
+**Endpoint: /announcements/**
+
+*Allowed methods*: **GET**
+
+**GET**
+
+Shows you PYBOSSA wide announcements
+
+* **announcements**: Announcements
+* **template**: the rendered Announcements tamplate (currently empty)
+
+**Example output**
+
+.. code-block:: python
+
+    {
+        "announcements": [
+            {
+                "body": "test123",
+                "created": "2017-05-31T15:23:44.858735",
+                "id": 5,
+                "title": "title123",
+                "user_id": 4953
+            },
+            {
+                "body": "new body",
+                "created": "2017-05-31T15:23:28.477516",
+                "id": 4,
+                "title": "blogpost title",
+                "user_id": 4953
+            },
+            {
+                "body": "new body",
+                "created": "2017-06-01T23:42:45.042010",
+                "id": 7,
+                "title": "blogpost title",
+                "user_id": 4953
+            },
+            {
+                "body": "new body",
+                "created": "2017-06-01T23:45:11.612801",
+                "id": 8,
+                "title": "blogpost title",
+                "user_id": 4953
+            }
+        ],
+        "template": ""
+    }
+
+
+Admin announcement
+~~~~~~~~~~~~~~~~~~
+**Endpoint: /admin/announcement**
+
+**GET**
+
+Shows you PYBOSSA wide announcements
+
+* **announcements**: Announcements
+* **csrf**: csrf token
+* **template**: the rendered Announcements tamplate (currently empty)
+* **title**: title of rendered endpoint
+
+**Example output**
+
+.. code-block:: python
+
+    {
+        "announcements": [
+            {
+                "body": "test123",
+                "created": "2017-05-31T15:23:44.858735",
+                "id": 5,
+                "title": "title123",
+                "user_id": 4953
+            },
+            {
+                "body": "new body",
+                "created": "2017-05-31T15:23:28.477516",
+                "id": 4,
+                "title": "blogpost title",
+                "user_id": 4953
+            },
+            {
+                "body": "new body",
+                "created": "2017-06-01T23:42:45.042010",
+                "id": 7,
+                "title": "blogpost title",
+                "user_id": 4953
+            },
+            {
+                "body": "new body",
+                "created": "2017-06-01T23:45:11.612801",
+                "id": 8,
+                "title": "blogpost title",
+                "user_id": 4953
+            }
+        ],
+      "csrf": "1496394861.12##1bfcbb386bae5d1625c023a23b08865b4176579d",
+      "template": "",
+      "title": "Manage global Announcements"
+    }
+
+
+Admin announcement new
+~~~~~~~~~~~~~~~~~~~~~~
+**Endpoint: /admin/announcement/new**
+
+*Allowed methods*: **GET/POST**
+
+**GET**
+
+Creates a new PYBOSSA wide announcement
+
+* **form**: form input
+* **template**: the rendered Announcements tamplate (currently empty)
+* **title**: title of rendered endpoint
+
+
+**Example output**
+
+.. code-block:: python
+
+    {
+      "form": {
+        "body": null,
+        "csrf": "1496394903.81##bb5fb0c527955073ec9ad694ed9097e7c868272a",
+        "errors": {},
+        "title": null
+      },
+      "template": "",
+      "title": "Write a new post"
+    }
+
+**POST**
+
+To send a valid POST request you need to pass the *csrf token* in the headers. Use
+the following header: "X-CSRFToken".
+On success you will get a 200 http code and following output:
+
+**Example output**
+
+.. code-block:: python
+
+    {
+      "flash": "<i class=\"icon-ok\"></i> Annnouncement created!",
+      "next": "/admin/announcement",
+      "status": "success"
+    }
+
+
+Admin announcement update
+~~~~~~~~~~~~~~~~~~~~~~~~~
+**Endpoint: /admin/announcement/<id>/update**
+
+*Allowed methods*: **GET/POST**
+
+**GET**
+
+Updates a PYBOSSA announcement
+
+* **form**: form input
+* **template**: the rendered Announcements tamplate (currently empty)
+* **title**: title of rendered endpoint
+
+
+**Example output**
+
+.. code-block:: python
+
+    {
+      "form": {
+        "body": "test6",
+        "csrf": "1496328993.27##aa51e026938129afdfb0e6a5eab8c6b9427f81f6",
+        "errors": {},
+        "id": 4,
+        "title": "test6"
+      },
+      "template": "",
+      "title": "Edit a post"
+    }
+
+**POST**
+
+To send a valid POST request you need to pass the *csrf token* in the headers. Use
+the following header: "X-CSRFToken".
+On success you will get a 200 http code and following output:
+
+**Example output**
+
+.. code-block:: python
+
+    {
+      "flash": "<i class=\"icon-ok\"></i> Announcement updated!",
+      "next": "/admin/announcement",
+      "status": "success"
+    }
+
+
+Admin announcement delete
+~~~~~~~~~~~~~~~~~~~~~~~~~
+**Endpoint: /admin/announcement/<id>/delete**
+
+*Allowed methods*: **POST**
+
+Deletes a PYBOSSA announcement
+
+**POST**
+
+To send a valid POST request you need to pass the *csrf token* in the headers. Use
+the following header: "X-CSRFToken". You can get the token from /admin/announcement
+On success you will get a 200 http code and following output:
+
+**Example output**
+
+.. code-block:: python
+
+    {
+      "flash": "<i class=\"icon-ok\"></i> Announcement deleted!",
+      "next": "/admin/announcement",
+      "status": "success"
     }
 
 

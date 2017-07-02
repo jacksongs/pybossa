@@ -27,38 +27,46 @@ This package adds GET, POST, PUT and DELETE methods for any class:
 
 """
 import json
-from flask import request, abort, Response
+from flask import request, abort, Response, current_app
 from flask.ext.login import current_user
 from flask.views import MethodView
 from werkzeug.exceptions import NotFound, Unauthorized, Forbidden
-from pybossa.util import jsonpify, fuzzyboolean
-from pybossa.core import ratelimits
+from werkzeug.exceptions import MethodNotAllowed
+from pybossa.util import jsonpify, fuzzyboolean, get_avatar_url
+from pybossa.core import ratelimits, uploader
 from pybossa.auth import ensure_authorized_to
 from pybossa.hateoas import Hateoas
 from pybossa.ratelimit import ratelimit
 from pybossa.error import ErrorStatus
-from pybossa.core import project_repo, user_repo, task_repo, result_repo, blog_repo
+from pybossa.core import project_repo, user_repo, task_repo, result_repo
+from pybossa.core import announcement_repo, blog_repo, helping_repo
 from pybossa.model import DomainObject
 
-repos = {'Task'   : {'repo': task_repo, 'filter': 'filter_tasks_by',
-                     'get': 'get_task', 'save': 'save', 'update': 'update',
-                     'delete': 'delete'},
-        'TaskRun' : {'repo': task_repo, 'filter': 'filter_task_runs_by',
-                     'get': 'get_task_run',  'save': 'save', 'update': 'update',
-                     'delete': 'delete'},
-        'User'    : {'repo': user_repo, 'filter': 'filter_by', 'get': 'get',
-                     'save': 'save', 'update': 'update'},
-        'Project' : {'repo': project_repo, 'filter': 'filter_by',
-                      'context': 'filter_owner_by', 'get': 'get',
-                      'save': 'save', 'update': 'update', 'delete': 'delete'},
-        'Category': {'repo': project_repo, 'filter': 'filter_categories_by',
-                     'get': 'get_category', 'save': 'save_category',
-                     'update': 'update_category', 'delete': 'delete_category'},
-        'Result':   {'repo': result_repo, 'filter': 'filter_by', 'get': 'get',
-                     'update': 'update'},
-        'Blogpost': {'repo': blog_repo, 'filter': 'filter_by', 'get': 'get',
-                     'update': 'update', 'save': 'save', 'delete': 'delete'}
-        }
+repos = {'Task': {'repo': task_repo, 'filter': 'filter_tasks_by',
+                  'get': 'get_task', 'save': 'save', 'update': 'update',
+                  'delete': 'delete'},
+         'TaskRun': {'repo': task_repo, 'filter': 'filter_task_runs_by',
+                     'get': 'get_task_run',  'save': 'save',
+                     'update': 'update', 'delete': 'delete'},
+         'User': {'repo': user_repo, 'filter': 'filter_by', 'get': 'get',
+                  'save': 'save', 'update': 'update'},
+         'Project': {'repo': project_repo, 'filter': 'filter_by',
+                     'context': 'filter_owner_by', 'get': 'get',
+                     'save': 'save', 'update': 'update', 'delete': 'delete'},
+         'Category': {'repo': project_repo, 'filter': 'filter_categories_by',
+                      'get': 'get_category', 'save': 'save_category',
+                      'update': 'update_category',
+                      'delete': 'delete_category'},
+         'Result': {'repo': result_repo, 'filter': 'filter_by', 'get': 'get',
+                    'update': 'update'},
+         'Announcement': {'repo': announcement_repo, 'filter': 'filter_by', 'get': 'get',
+                          'get_all_announcements': 'get_all_announcements',
+                          'update': 'update', 'save': 'save', 'delete': 'delete'},
+         'Blogpost': {'repo': blog_repo, 'filter': 'filter_by', 'get': 'get',
+                      'update': 'update', 'save': 'save', 'delete': 'delete'},
+         'HelpingMaterial': {'repo': helping_repo, 'filter': 'filter_by',
+                             'get': 'get', 'update': 'update',
+                             'save': 'save', 'delete': 'delete'}}
 
 
 error = ErrorStatus()
@@ -69,6 +77,8 @@ class APIBase(MethodView):
     """Class to create CRUD methods."""
 
     hateoas = Hateoas()
+
+    allowed_classes_upload = ['blogpost', 'helpingmaterial']
 
     def valid_args(self):
         """Check if the domain object args are valid."""
@@ -255,7 +265,9 @@ class APIBase(MethodView):
         """
         try:
             self.valid_args()
-            data = json.loads(request.data)
+            data = self._file_upload(request)
+            if data is None:
+                data = json.loads(request.data)
             self._forbidden_attributes(data)
             inst = self._create_instance_from_request(data)
             repo = repos[self.__class__.__name__]['repo']
@@ -307,6 +319,7 @@ class APIBase(MethodView):
         if inst is None:
             raise NotFound
         ensure_authorized_to('delete', inst)
+        self._file_delete(request, inst)
         self._log_changes(inst, None)
         delete_func = repos[self.__class__.__name__]['delete']
         getattr(repo, delete_func)(inst)
@@ -327,7 +340,14 @@ class APIBase(MethodView):
         """
         try:
             self.valid_args()
-            inst = self._update_instance(oid)
+            repo = repos[self.__class__.__name__]['repo']
+            query_func = repos[self.__class__.__name__]['get']
+            existing = getattr(repo, query_func)(oid)
+            if existing is None:
+                raise NotFound
+            ensure_authorized_to('update', existing)
+            data = self._file_upload(request)
+            inst = self._update_instance(existing, repo, repos, new_upload=data)
             return Response(json.dumps(inst.dictize()), 200,
                             mimetype='application/json')
         except Exception as e:
@@ -336,23 +356,24 @@ class APIBase(MethodView):
                 target=self.__class__.__name__.lower(),
                 action='PUT')
 
-    def _update_instance(self, oid):
-        repo = repos[self.__class__.__name__]['repo']
-        query_func = repos[self.__class__.__name__]['get']
-        existing = getattr(repo, query_func)(oid)
-        if existing is None:
-            raise NotFound
-        ensure_authorized_to('update', existing)
-        data = json.loads(request.data)
-        self._forbidden_attributes(data)
-        # Remove hateoas links
-        data = self.hateoas.remove_links(data)
+    def _update_instance(self, existing, repo, repos, new_upload=None):
+        data = dict()
+        if new_upload is None:
+            data = json.loads(request.data)
+            self._forbidden_attributes(data)
+            # Remove hateoas links
+            data = self.hateoas.remove_links(data)
+        else:
+            self._forbidden_attributes(request.form)
         # may be missing the id as we allow partial updates
-        data['id'] = oid
         self.__class__(**data)
         old = self.__class__(**existing.dictize())
         for key in data:
             setattr(existing, key, data[key])
+        if new_upload:
+            existing.media_url = new_upload['media_url']
+            existing.info['container'] = new_upload['info']['container']
+            existing.info['file_name'] = new_upload['info']['file_name']
         self._update_attribute(existing, old)
         update_func = repos[self.__class__.__name__]['update']
         self._validate_instance(existing)
@@ -404,3 +425,44 @@ class APIBase(MethodView):
         """Method to be overriden by inheriting classes that will not allow for
         certain fields to be used in PUT or POST requests"""
         pass
+
+    def _file_upload(self, data):
+        """Method that must be overriden by the class to allow file uploads for
+        only a few classes."""
+        cls_name = self.__class__.__name__.lower()
+        content_type = 'multipart/form-data'
+        if (content_type in request.headers.get('Content-Type') and
+                cls_name in self.allowed_classes_upload):
+            tmp = dict()
+            for key in request.form.keys():
+                tmp[key] = request.form[key]
+
+            ensure_authorized_to('create', self.__class__,
+                                 project_id=tmp['project_id'])
+            upload_method = current_app.config.get('UPLOAD_METHOD')
+            if request.files.get('file') is None:
+                raise AttributeError
+            _file = request.files['file']
+            container = "user_%s" % current_user.id
+            uploader.upload_file(_file,
+                                 container=container)
+            file_url = get_avatar_url(upload_method,
+                                      _file.filename, container)
+            tmp['media_url'] = file_url
+            if tmp.get('info') is None:
+                tmp['info'] = dict()
+            tmp['info']['container'] = container
+            tmp['info']['file_name'] = _file.filename
+            return tmp
+        else:
+            return None
+
+    def _file_delete(self, request, obj):
+        """Delete file object."""
+        cls_name = self.__class__.__name__.lower()
+        if cls_name in self.allowed_classes_upload:
+            keys = obj.info.keys()
+            if 'file_name' in keys and 'container' in keys:
+                ensure_authorized_to('delete', obj)
+                uploader.delete_file(obj.info['file_name'],
+                                     obj.info['container'])
