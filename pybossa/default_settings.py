@@ -25,6 +25,8 @@ PORT = 5000
 SECRET = 'foobar'
 SECRET_KEY = 'my-session-secret'
 
+SQLALCHEMY_DATABASE_URI = 'postgresql://pybossa:supersecretpassword@db/pybossa'
+
 ITSDANGEROUSKEY = 'its-dangerous-key'
 
 ## project configuration
@@ -49,19 +51,24 @@ APPS_PER_PAGE = 20
 ## Default allowed extensions
 ALLOWED_EXTENSIONS = ['js', 'css', 'png', 'jpg', 'jpeg', 'gif', 'zip']
 UPLOAD_METHOD = 'local'
+UPLOAD_FOLDER = 'uploads'
 
 ## Default number of users shown in the leaderboard
 LEADERBOARD = 20
 
 ## Default configuration for debug toolbar
-ENABLE_DEBUG_TOOLBAR = False
+ENABLE_DEBUG_TOOLBAR = True
+
+## Enforce Privacy Mode, by default is disabled
+## This config variable will disable all related user pages except for admins
+## Stats, top users, leaderboard, etc
+ENFORCE_PRIVACY = False
 
 # Cache default key prefix
-REDIS_CACHE_ENABLED = False
-REDIS_SENTINEL = [('localhost', 26379)]
+REDIS_CACHE_ENABLED = True
+REDIS_SENTINEL = [('redis-sentinel', 26379)]
 REDIS_MASTER = 'mymaster'
 REDIS_DB = 0
-
 REDIS_KEYPREFIX = 'pybossa_cache'
 
 ## Default cache timeouts
@@ -114,6 +121,9 @@ WEEKLY_UPDATE_STATS = 'Sunday'
 
 # Enable Server Sent Events
 SSE = False
+
+# Libsass style. You can use nested, expanded, compact and compressed
+LIBSASS_STYLE = 'compressed'
 
 # Pro user features. False will make the feature available to all regular users,
 # while True will make it available only to pro users
