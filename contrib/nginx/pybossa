@@ -25,7 +25,7 @@ location @pybossa {
 location  /static {
 
             # change that to your pybossa static directory
-            alias /home/pybossa/pybossa/pybossa/themes/default/static;
+            alias /opt/pybossa/pybossa/themes/burn/static;
 
             autoindex on;
             expires max;
