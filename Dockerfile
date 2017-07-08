@@ -3,49 +3,45 @@ FROM python:2.7-alpine
 ENV REDIS_SENTINEL=redis-sentinel
 ENV REDIS_MASTER=mymaster
 
-# install git and various python library dependencies with alpine tools
+# install git and various python library dependencies with alpine tools 
 RUN set -x && \
     apk --no-cache add postgresql-dev g++ gcc git jpeg-dev libffi-dev libjpeg libxml2-dev libxslt-dev linux-headers musl-dev openssl zlib zlib-dev
 
-RUN set -x && \
-    apk --no-cache add nginx
+# Create the working directory
+RUN mkdir -p /usr/src/app/pybossa
+ADD requirements.txt /usr/src/app/pybossa
+ADD setup.py /usr/src/app/pybossa
 
-# install python dependencies with pip
-# install pybossa from git
-# add unprivileged user for running the service
+# Install the package dependencies (this step is separated
+# from copying all the source code to avoid having to
+# re-install all python packages defined in requirements.txt
+# whenever any source code change is made)
 ENV LIBRARY_PATH=/lib:/usr/lib
 RUN set -x && \
-    git clone --recursive https://github.com/jacksongs/pybossa /opt/pybossa && \
-    cd /opt/pybossa && \
+    cd /usr/src/app/pybossa && \
     pip install -U pip setuptools && \
-    pip install -r /opt/pybossa/requirements.txt && \
-    rm -rf /opt/pybossa/.git/ && \
+    pip install -r /usr/src/app/pybossa/requirements.txt && \
+    rm -rf /usr/src/app/pybossa/.git/ && \
     addgroup pybossa  && \
-    adduser -D -G pybossa -s /bin/sh -h /opt/pybossa pybossa && \
+    adduser -D -G pybossa -s /bin/sh -h /usr/src/app/pybossa pybossa && \
     passwd -u pybossa
 
-# variables in these files are modified with sed from /entrypoint.sh
-ADD alembic.ini /opt/pybossa/
-ADD settings_local.py /opt/pybossa/
+COPY . /usr/src/app/pybossa
 
 # TODO: we shouldn't need write permissions on the whole folder
 #   Known files written during runtime:
 #     - /opt/pybossa/pybossa/themes/default/static/.webassets-cache
 #     - /opt/pybossa/alembic.ini and /opt/pybossa/settings_local.py (from entrypoint.sh)
-RUN chown -R pybossa:pybossa /opt/pybossa
+RUN chown -R pybossa:pybossa /usr/src/app/pybossa
 
-ADD entrypoint.sh /
+ADD entrypoint-local.sh /entrypoint.sh
 ENTRYPOINT ["/entrypoint.sh"]
-
-# Put the nginx config file in the right spot
-ADD /opt/pybossa/contrib/nginx/pybossa /etc/nginx/sites-available/.
-RUN sudo ln -s /etc/nginx/sites-available/pybossa /etc/nginx/sites-enabled/pybossa
 
 # run with unprivileged user
 USER pybossa
-WORKDIR /opt/pybossa
-EXPOSE 8080
+WORKDIR /usr/src/app/pybossa
+EXPOSE 5000
 
 # Background worker is also necessary and should be run from another copy of this container
 #   python app_context_rqworker.py scheduled_jobs super high medium low email maintenance
-CMD ["python", "run.py"]
+CMD ["python", "run.py"] 
