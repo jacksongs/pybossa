@@ -44,4 +44,4 @@ EXPOSE 5000
 
 # Background worker is also necessary and should be run from another copy of this container
 #   python app_context_rqworker.py scheduled_jobs super high medium low email maintenance
-CMD ["python", "run.py"] 
+# CMD ["python", "run.py"] 
