@@ -25,7 +25,7 @@ PORT = 5000
 SECRET = 'foobar'
 SECRET_KEY = 'my-session-secret'
 
-SQLALCHEMY_DATABASE_URI = 'postgresql://pybossa:wilsonwilsonpassword@db/pybossa'
+SQLALCHEMY_DATABASE_URI = '{{POSTGRES_URL}}'
 
 ITSDANGEROUSKEY = 'its-dangerous-key'
 
