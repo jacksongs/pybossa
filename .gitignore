@@ -46,3 +46,5 @@ tags
 pybossa/themes/default
 
 doc/_themes/sphinx-theme-pybossa/
+
+pybossa/plugins/pybossa_discourse/DISABLED
