@@ -1,0 +1,21 @@
+[supervisord]
+nodaemon=true
+log_stdout=true
+log_stderr=true
+logfile=/tmp/supervisor.log
+logfile_maxbytes=10MB
+logfile_backups=2
+
+[program:pybossa]
+command=/usr/local/bin/uwsgi /opt/pybossa/pybossa.ini
+directory=/opt/pybossa
+autostart=true
+autorestart=true
+user=pybossa
+
+[program:nginx]
+command=/usr/sbin/nginx -g "daemon off;"
+stdout_logfile=/dev/stdout
+stdout_logfile_maxbytes=0
+stderr_logfile=/dev/stderr
+stderr_logfile_maxbytes=0
