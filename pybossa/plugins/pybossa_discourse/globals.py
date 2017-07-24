@@ -48,7 +48,7 @@ class DiscourseGlobals(object):
     def comments(self, embedUrl=None):
         """Return an HTML snippet used to embed Discourse comments."""
         if not embedUrl:
-            embedUrl = request.base_url
+            embed_url = request.base_url
         return self._comment_feed_markup(embed_url)
 
     def notifications(self):
