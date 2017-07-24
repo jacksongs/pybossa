@@ -16,7 +16,7 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with PYBOSSA.  If not, see <http://www.gnu.org/licenses/>.
 
-DEBUG = False
+DEBUG = True
 
 # webserver host and port
 HOST = '0.0.0.0'
@@ -25,18 +25,19 @@ PORT = 5000
 SECRET = 'foobar'
 SECRET_KEY = 'my-session-secret'
 
-SQLALCHEMY_DATABASE_URI = 'postgresql://pybossa:wilsonwilsonpassword2@db/pybossa'
+SQLALCHEMY_DATABASE_URI = 'postgresql://pybossa:wilsonwilsonpass@db/pybossa'
 
 ITSDANGEROUSKEY = 'its-dangerous-key'
 
-## project configuration
-BRAND = 'PYBOSSA'
-TITLE = 'PYBOSSA'
-COPYRIGHT = 'Set Your Institution'
-DESCRIPTION = 'Set the description in your config'
+BRAND = 'BURN THE REGISTER'
+TITLE = 'BURN THE REGISTER'
+LOGO = 'default_logo.svg'
+COPYRIGHT = 'BURN THE REGISTER'
+DESCRIPTION = 'Fixing the Parliamentary Interests Register for good'
 TERMSOFUSE = 'http://okfn.org/terms-of-use/'
 DATAUSE = 'http://opendatacommons.org/licenses/by/'
-LOGO = ''
+CONTACT_EMAIL = 'boss@burntheregister.com'
+CONTACT_TWITTER = '@jacksongs'
 DEFAULT_LOCALE = 'en'
 LOCALES = [('en', 'English'), ('es', u'Español'),
            ('it', 'Italiano'), ('fr', u'Français'),

@@ -60,7 +60,8 @@ requirements = [
     "pybossa-onesignal",
     "pandas>=0.20.2, <0.20.3",
     "flatten-json",
-    "uwsgi"
+    "uwsgi",
+    "dicttoxml>=1.7.0, <2" # for the data plugin
 ]
 
 setup(

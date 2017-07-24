@@ -1,0 +1,71 @@
+{% extends "_layouts/splash.html" %}
+{% set active_page = "data" %}
+{% import "_helpers/_card.html" as card_helpers %}
+{% import "_helpers/_table.html" as table_helpers %}
+{% import "_helpers/_category.html" as category_helpers %}
+
+{% block content %}
+<link rel="stylesheet" type="text/css" href="{{ url_for('data.static', filename='css/styles.css') }}">
+
+<div id="data-jumbotron" class="jumbotron jumbotron-fullscreen invert-navbar jumbotron-fade mb-0">
+    <div class="container text-center h-100 d-flex align-items-center justify-content-between flex-column">
+        <div></div>
+        <div></div>
+        <a href="#intro" data-aos="fade-up" data-aos-delay="200" data-aos-easing="ease-out-sine" data-aos-offset="0">
+            <p class="mb-1 text-uppercase text-white">Scroll Down</p>
+            <span class="fa fa-chevron-down fa-2x text-primary pulse"></span>
+        </a>
+    </div>
+</div>
+
+
+<section id="intro">
+    <div class="container py-5">
+        <div class="row">
+            <div class="col-lg-10 offset-lg-1">
+                <h1 class="text-uppercase font-weight-bold display-4 text-center">Tada!</h1>
+                <hr class="bw-3 my-4">
+                <p class="lead">
+                    The BURN THE REGISTER publishes the declarations of MPs and Senators in batches, ready for transcription. As each batch is transcribed the raw data is released here.
+                </p>
+                <p class="lead">
+                    Once all MPs and Senators have had their initial declarations transcribed, the data will be cleaned and organisaed and a search function will be made available to contributors. So <a href="{{url_for('account.register')}}">join now</a>!
+                </p>
+                <hr>
+                <p class="lead">
+                    Get in touch via <a href="http://team.burntheregister.com/">the community</a> if you use the data or have any questions about it.
+                    </p>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section class="bg-faded">
+    <div class="container">
+        <div class="row">
+            <div class="col-lg-12">
+                {% for c in categories %}
+                <div id="category-{{ c.id }}" {% if not loop.first %}style="display: none;"{% endif %}>
+                        <div class="table-responsive">
+                            <table id="cat-{{ c.id }}-contributions-table" class="table table-hover table-striped mb-0">
+                                {{ table_helpers.render_head(['MP/Senator', 'Transcriptions', 'CSV', 'JSON'], center_indexes=[2, 3, 4]) }}
+                                <tbody>
+                                    {% for p in projects[c.short_name] %}
+                                    <tr>
+                                        {{ table_helpers.render_cell(p.name, url=url_for('project.details', short_name=p.short_name)) }}
+                                        {{ table_helpers.render_cell(p.n_task_runs, center=True) }}
+                                        {{ table_helpers.render_cell('Download CSV', url=url_for('project.export_to', short_name=p.short_name, type='task_run', format='csv'), btn=True, center=True) }}
+                                        {{ table_helpers.render_cell('Download JSON', url=url_for('project.export_to', short_name=p.short_name, type='task_run', format='json'), btn=True, center=True) }}
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+</section>
+{% endblock %}
