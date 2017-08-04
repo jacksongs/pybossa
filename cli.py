@@ -31,12 +31,12 @@ def db_create():
         setup_alembic_config()
         # finally, add a minimum set of categories: Volunteer Thinking, Volunteer Sensing, Published and Draft
         categories = []
-        categories.append(Category(name="Thinking",
-                          short_name='thinking',
-                          description='Volunteer Thinking projects'))
-        categories.append(Category(name="Volunteer Sensing",
-                          short_name='sensing',
-                          description='Volunteer Sensing projects'))
+        categories.append(Category(name="Senators",
+                          short_name='senators',
+                          description="Digitising Senators' declarations"))
+        categories.append(Category(name="MPs",
+                          short_name='mps',
+                          description="Digitising MPs' declarations"))
         db.session.add_all(categories)
         db.session.commit()
 
