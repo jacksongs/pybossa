@@ -6,6 +6,14 @@ server {
         rewrite ^ https://$server_name$request_uri? redirect;
     }
 
+    ssl_certificate /etc/letsencrypt/live/burntheregister.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/burntheregister.com/privkey.pem;
+
+    ssl_protocols TLSv1 TLSv1.1 TLSv1.2;
+    ssl_prefer_server_ciphers on;
+    ssl_ciphers 'EECDH+AESGCM:EDH+AESGCM:AES256+EECDH:AES256+EDH';
+ 
+
 
     large_client_header_buffers 4 32k;
     real_ip_header X-Forwarded-For;
