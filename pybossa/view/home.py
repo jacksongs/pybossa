@@ -27,6 +27,7 @@ from pybossa.cache import categories as cached_cat
 from pybossa.util import rank, handle_content_type
 from jinja2.exceptions import TemplateNotFound
 
+from pybossa.cache import site_stats
 
 blueprint = Blueprint('home', __name__)
 
@@ -55,6 +56,13 @@ def home():
         featured = Category(name='Featured', short_name='featured')
         d['categories'].insert(0, featured)
         d['categories_projects']['featured'] = rank(tmp_projects)
+
+    # Add global stats
+
+    d['n_tasks'] = site_stats.n_tasks_site()
+    d['n_task_runs'] = site_stats.n_task_runs_site()
+    d['progress'] = int(round(float(site_stats.n_task_runs_site())/site_stats.n_tasks_site(),2)*100)
+
 
     if (current_app.config['ENFORCE_PRIVACY']
             and current_user.is_authenticated()):
