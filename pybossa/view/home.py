@@ -59,9 +59,10 @@ def home():
 
     # Add global stats
 
-    d['n_tasks'] = site_stats.n_tasks_site()
+    d['n_tasks'] = site_stats.n_tasks_site()*3
     d['n_task_runs'] = site_stats.n_task_runs_site()
-    d['progress'] = int(round(float(site_stats.n_task_runs_site())/site_stats.n_tasks_site(),2)*100)
+    d['progress'] = int(round(float(site_stats.n_task_runs_site())/(site_stats.n_tasks_site()*3),2)*100)
+    d['progress_current'] = int(round(float(site_stats.n_task_runs_site())/3/2000,2)*100)
 
 
     if (current_app.config['ENFORCE_PRIVACY']
