@@ -34,7 +34,7 @@ def db_create():
         categories.append(Category(name="Senators",
                           short_name='senators',
                           description="Digitising Senators' declarations"))
-        categories.append(Category(name="MPs",
+        categories.append(Category(name="Lower House MPs",
                           short_name='mps',
                           description="Digitising MPs' declarations"))
         db.session.add_all(categories)
