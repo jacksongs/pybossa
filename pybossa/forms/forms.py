@@ -28,11 +28,13 @@ from flask.ext.babel import lazy_gettext, gettext
 from pybossa.core import project_repo, user_repo
 from pybossa.sched import sched_variants
 import validator as pb_validator
+from pybossa.core import enable_strong_password
 
 
 EMAIL_MAX_LENGTH = 254
 USER_NAME_MAX_LENGTH = 35
 USER_FULLNAME_MAX_LENGTH = 35
+
 
 ### Forms for projects view
 
@@ -106,6 +108,7 @@ class TaskSchedulerForm(Form):
         _translate_names = lambda variant: (variant[0], lazy_gettext(variant[1]))
         _choices = map(_translate_names, new_options)
         cls.sched.kwargs['choices'] = _choices
+
 
 class AnnouncementForm(Form):
     id = IntegerField(label=None, widget=HiddenInput())
@@ -207,6 +210,7 @@ class BulkTaskTwitterImportForm(Form):
             'user_credentials': self.user_credentials.data,
         }
 
+
 class BulkTaskYoutubeImportForm(Form):
     form_name = TextField(label=None, widget=HiddenInput(), default='youtube')
     msg_required = lazy_gettext("You must provide a valid playlist")
@@ -296,9 +300,17 @@ class RegisterForm(Form):
 
     err_msg = lazy_gettext("Password cannot be empty")
     err_msg_2 = lazy_gettext("Passwords must match")
-    password = PasswordField(lazy_gettext('New Password'),
-                             [validators.Required(err_msg),
-                              validators.EqualTo('confirm', err_msg_2)])
+    if enable_strong_password:
+        password = PasswordField(
+                        lazy_gettext('New Password'),
+                        [validators.Required(err_msg),
+                            validators.EqualTo('confirm', err_msg_2),
+                            pb_validator.CheckPasswordStrength()])
+    else:
+        password = PasswordField(
+                        lazy_gettext('New Password'),
+                        [validators.Required(err_msg),
+                            validators.EqualTo('confirm', err_msg_2)])
 
     confirm = PasswordField(lazy_gettext('Repeat Password'))
 
@@ -372,7 +384,6 @@ class ResetPasswordForm(Form):
     confirm = PasswordField(lazy_gettext('Repeat Password'))
 
 
-
 class ForgotPasswordForm(Form):
 
     """Form Class for forgotten password."""
@@ -384,6 +395,12 @@ class ForgotPasswordForm(Form):
                                               max=EMAIL_MAX_LENGTH,
                                               message=err_msg),
                             validators.Email()])
+
+
+class OTPForm(Form):
+    otp = TextField(lazy_gettext('One Time Password'),
+                    [validators.Required(message=lazy_gettext(
+                        'You must provide a valid OTP code'))])
 
 
 ### Forms for admin view
@@ -401,6 +418,7 @@ class CategoryForm(Form):
     description = TextField(lazy_gettext('Description'),
                             [validators.Required()])
 
+
 ### Common forms
 class AvatarUploadForm(Form):
     id = IntegerField(label=None, widget=HiddenInput())
@@ -409,3 +427,4 @@ class AvatarUploadForm(Form):
     y1 = IntegerField(label=None, widget=HiddenInput(), default=0)
     x2 = IntegerField(label=None, widget=HiddenInput(), default=0)
     y2 = IntegerField(label=None, widget=HiddenInput(), default=0)
+

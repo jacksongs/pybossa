@@ -52,6 +52,7 @@ def create_app(run_as_server=True):
     setup_db(app)
     setup_repositories(app)
     setup_exporter(app)
+    setup_strong_password(app)
     mail.init_app(app)
     sentinel.init_app(app)
     signer.init_app(app)
@@ -523,10 +524,6 @@ def setup_hooks(app):
     @app.context_processor
     def _global_template_context():
         notify_admin = False
-        if current_user and current_user.is_authenticated():
-            if current_user.email_addr == current_user.name:
-                flash(gettext("Please update your e-mail address in your"
-                      " profile page, right now it is empty!"), 'error')
         if (current_user and current_user.is_authenticated()
             and current_user.admin):
             key = NEWS_FEED_KEY + str(current_user.id)
@@ -692,3 +689,8 @@ def setup_assets(app):
     """Setup assets."""
     from flask.ext.assets import Environment
     assets = Environment(app)
+
+
+def setup_strong_password(app):
+    global enable_strong_password
+    enable_strong_password = app.config.get('ENABLE_STRONG_PASSWORD')
