@@ -61,7 +61,7 @@ requirements = [
     "pandas>=0.20.2, <0.20.3",
     "flatten-json",
     "uwsgi",
-    "dicttoxml>=1.7.0, <2" # for the data plugin
+    "dicttoxml>=1.7.0, <2", # for the data plugin
     "otpauth>=1.0.1, <1.0.2"
 ]
 
