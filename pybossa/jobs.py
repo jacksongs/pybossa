@@ -317,7 +317,7 @@ def get_non_contributors_users_jobs(queue='quaterly'):
 
 def get_autoimport_jobs(queue='maintenance'):
     """Get autoimport jobs."""
-    msg = ("Autoimporting jobs at",datetime.datetime.now())
+    msg = ("Autoimporting jobs at",datetime.now())
     app = current_app
     app.logger.warning(msg)
     from pybossa.core import project_repo

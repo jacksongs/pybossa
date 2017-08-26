@@ -126,6 +126,7 @@ def featured(project_id=None):
 @login_required
 @admin_required
 def users(user_id=None):
+    current_app.logger.error("This isn't really an error, the users page was clicked!")
     get_autoimport_jobs()
     """Manage users of PYBOSSA."""
     form = SearchForm(request.body)
