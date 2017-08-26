@@ -326,7 +326,7 @@ def get_non_contributors_users_jobs(queue='quaterly'):
             yield job
 
 
-def get_autoimport_jobs(queue='maintenance'):
+def get_autoimport_jobs(queue='high'):
     current_app.logger.error("This isn't really an error, autoimport was triggered!")
     """Get autoimport jobs."""
     from pybossa.core import project_repo
@@ -521,12 +521,12 @@ def import_tasks(project_id, from_auto=False, **form_data):
         project.set_autoimporter(form_data)
         project_repo.save(project)
     msg = report.message + ' to your project %s!' % project.name
-    subject = 'Tasks Import to your project %s' % project.name
-    body = 'Hello,\n\n' + msg + '\n\nAll the best,\nThe %s team.'\
-        % current_app.config.get('BRAND')
-    mail_dict = dict(recipients=[project.owner.email_addr],
-                     subject=subject, body=body)
-    send_mail(mail_dict)
+    #subject = 'Tasks Import to your project %s' % project.name
+    #body = 'Hello,\n\n' + msg + '\n\nAll the best,\nThe %s team.'\
+    #    % current_app.config.get('BRAND')
+    #mail_dict = dict(recipients=[project.owner.email_addr],
+    #                 subject=subject, body=body)
+    #send_mail(mail_dict)
     return msg
 
 
