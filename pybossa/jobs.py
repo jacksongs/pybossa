@@ -349,7 +349,9 @@ def get_autoimport_jobs(queue='low'):
     for project_dict in projects:
         current_app.logger.error("v5")
         project = project_repo.get(project_dict['id'])
+        current_app.logger.error(str(project))
         if project.has_autoimporter():
+            current_app.logger.error(str(project))
             current_app.logger.error("v6")
             job = dict(name=import_tasks,
                        args=[project.id, True],
