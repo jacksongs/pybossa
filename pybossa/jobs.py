@@ -33,6 +33,7 @@ def schedule_job(function, scheduler, the_app):
     the_app.logger.error("This isn't really an error, scheduled jobs was triggered!")
     """Schedule a job and return a log message."""
     scheduled_jobs = scheduler.get_jobs()
+    the_app.logger.error("1")
     job = scheduler.schedule(
         scheduled_time=(function.get('scheduled_time') or datetime.utcnow()),
         func=function['name'],
@@ -41,6 +42,7 @@ def schedule_job(function, scheduler, the_app):
         interval=function['interval'],
         repeat=None,
         timeout=function['timeout'])
+    the_app.logger.error("2")
     for sj in scheduled_jobs:
         if (function['name'].__name__ in sj.func_name and
             sj.args == function['args'] and
@@ -50,10 +52,11 @@ def schedule_job(function, scheduler, the_app):
                    % (function['name'].__name__, function['args'],
                       function['kwargs']))
             return msg
+    the_app.logger.error("3")
     msg = ('Scheduled %s(%s, %s) to run every %s seconds'
            % (function['name'].__name__, function['args'], function['kwargs'],
               function['interval']))
-    the_app.logger.error(msg)
+    the_app.logger.error("4")
     return msg
 
 
