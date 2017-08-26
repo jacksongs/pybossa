@@ -677,7 +677,7 @@ def setup_scheduled_jobs(app):  # pragma: no cover
                  scheduled_time=first_quaterly_execution)]
     app.logger.error("This isn't really an error, the length of JOBS is "+str(len(JOBS)))
     for job in JOBS:
-        app.logger.error("This isn't really an error, this is just one job")
+        app.logger.error("This isn't really an error, this is just one job: "+str(job))
         schedule_job(job, scheduler)
 
 
