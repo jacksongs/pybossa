@@ -118,7 +118,7 @@ def get_periodic_jobs(queue):
     zip_jobs = get_export_task_jobs(queue) if queue in ('high', 'low') else []
     # Based on type of user
     project_jobs = get_project_jobs(queue) if queue in ('super', 'high') else []
-    autoimport_jobs = get_autoimport_jobs() if queue == 'low' else []
+    autoimport_jobs = get_autoimport_jobs() if queue == 'maintenance' else []
     # User engagement jobs
     engage_jobs = get_inactive_users_jobs() if queue == 'quaterly' else []
     non_contrib_jobs = get_non_contributors_users_jobs() \
