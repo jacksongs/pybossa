@@ -51,6 +51,7 @@ def schedule_job(function, scheduler, the_app):
             msg = ('WARNING: Job %s(%s, %s) is already scheduled'
                    % (function['name'].__name__, function['args'],
                       function['kwargs']))
+            the_app.logger.error(msg)
             return msg
     the_app.logger.error("3")
     msg = ('Scheduled %s(%s, %s) to run every %s seconds'
