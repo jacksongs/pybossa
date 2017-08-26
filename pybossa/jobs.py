@@ -346,10 +346,6 @@ def get_autoimport_jobs(queue='low'):
     current_app.logger.error("v3b")
     projects = (p.dictize() for p in project_repo.get_all())
     current_app.logger.error("v4")
-    current_app.logger.error(str(len(project_repo.get_all())))
-    current_app.logger.error(str(len(projects)))
-    current_app.logger.error(str(type(projects)))
-    current_app.logger.error(str(projects))
     for project_dict in projects:
         current_app.logger.error("v5")
         project = project_repo.get(project_dict['id'])
