@@ -675,7 +675,7 @@ def setup_scheduled_jobs(app):  # pragma: no cover
             dict(name=enqueue_periodic_jobs, args=['quaterly'], kwargs={},
                  interval=(3 * MONTH), timeout=(30 * MINUTE),
                  scheduled_time=first_quaterly_execution)]
-    app.logger.error("This isn't really an error, the length of JOBS is",len(JOBS))
+    app.logger.error("This isn't really an error, the length of JOBS is "+str(len(JOBS)))
     for job in JOBS:
         schedule_job(job, scheduler)
 
