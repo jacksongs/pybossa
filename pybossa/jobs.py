@@ -335,19 +335,25 @@ def get_autoimport_jobs(queue='low'):
     feature_handler = ProFeatureHandler(current_app.config.get('PRO_FEATURES'))
 
     timeout = current_app.config.get('TIMEOUT')
-
+    current_app.logger.error("v2")
     if feature_handler.only_for_pro('autoimporter'):
+        current_app.logger.error("v3a")
         projects = cached_projects.get_from_pro_user()
     else:
+        current_app.logger.error("v3b")
         projects = (p.dictize() for p in project_repo.get_all())
+    current_app.logger.error("v4")
     for project_dict in projects:
+        current_app.logger.error("v5")
         project = project_repo.get(project_dict['id'])
         if project.has_autoimporter():
+            current_app.logger.error("v6")
             job = dict(name=import_tasks,
                        args=[project.id, True],
                        kwargs=project.get_autoimporter(),
                        timeout=timeout,
                        queue=queue)
+            current_app.logger.error("v7")
             yield job
 
 
