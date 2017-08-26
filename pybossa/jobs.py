@@ -58,6 +58,7 @@ def schedule_job(function, scheduler, the_app):
            % (function['name'].__name__, function['args'], function['kwargs'],
               function['interval']))
     the_app.logger.error("4")
+    the_app.logger.error(msg)
     return msg
 
 
