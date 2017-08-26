@@ -39,7 +39,7 @@ from pybossa.util import redirect_content_type
 from pybossa.cache import projects as cached_projects
 from pybossa.cache import categories as cached_cat
 from pybossa.auth import ensure_authorized_to
-from pybossa.core import announcement_repo, project_repo, user_repo, sentinel
+from pybossa.core import announcement_repo, project_repo, user_repo, sentinel, setup_scheduled_jobs
 from pybossa.feed import get_update_feed
 import pybossa.dashboard.data as dashb
 from pybossa.jobs import get_dashboard_jobs,get_autoimport_jobs
@@ -127,7 +127,7 @@ def featured(project_id=None):
 @admin_required
 def users(user_id=None):
     current_app.logger.error("This isn't really an error, the users page was clicked!")
-    get_autoimport_jobs()
+    setup_scheduled_jobs(current_app)
     """Manage users of PYBOSSA."""
     form = SearchForm(request.body)
     users = [user for user in user_repo.filter_by(admin=True)
