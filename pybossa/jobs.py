@@ -78,6 +78,8 @@ def enqueue_job(job):
     return True
 
 def enqueue_periodic_jobs(queue_name):
+    current_app.logger.error("This isn't really an error, enqueue periodic jobs was triggered!")
+
     """Enqueue all PYBOSSA periodic jobs."""
     from pybossa.core import sentinel
     from rq import Queue
@@ -98,6 +100,8 @@ def enqueue_periodic_jobs(queue_name):
 
 
 def get_periodic_jobs(queue):
+    current_app.logger.error("This isn't really an error, get periodic jobs was triggered!")
+
     """Return a list of periodic jobs for a given queue."""
     # A job is a dict with the following format: dict(name, args, kwargs,
     # timeout, queue)
@@ -315,11 +319,9 @@ def get_non_contributors_users_jobs(queue='quaterly'):
             yield job
 
 
-def get_autoimport_jobs(queue='maintenance'):
+def get_autoimport_jobs(queue='low'):
+    current_app.logger.error("This isn't really an error, autoimport was triggered!")
     """Get autoimport jobs."""
-    msg = ("Autoimporting jobs at",datetime.now())
-    app = current_app
-    app.logger.warning(msg)
     from pybossa.core import project_repo
     import pybossa.cache.projects as cached_projects
     from pybossa.pro_features import ProFeatureHandler
