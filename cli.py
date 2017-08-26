@@ -31,12 +31,26 @@ def db_create():
         setup_alembic_config()
         # finally, add a minimum set of categories: Volunteer Thinking, Volunteer Sensing, Published and Draft
         categories = []
-        categories.append(Category(name="Senators",
-                          short_name='senators',
-                          description="Digitising Senators' declarations"))
-        categories.append(Category(name="Lower House MPs",
-                          short_name='mps',
-                          description="Digitising MPs' declarations"))
+        categories.append(Category(name="House Coalition",
+                          short_name='housecoalition',
+                          description="Members of the House of Representatives in the Liberal and National Parties",
+                          id=0))
+        categories.append(Category(name="House Labor",
+                          short_name='houselabor',
+                          description="Members of the House of Representatives in the Labor Party",
+                          id=1))
+        categories.append(Category(name="Senate Coalition",
+                          short_name='senatecoalition',
+                          description="Members of the Senate in the Liberal and National Parties",
+                          id=2))
+        categories.append(Category(name="Senate Labor",
+                          short_name='senatelabor',
+                          description="Members of the Senate in the Labor Party",
+                          id=3))
+        categories.append(Category(name="Crossbench",
+                          short_name='crossbench',
+                          description="Crossbenchers in both the House of Representatives and the Senate",
+                          id=4))
         db.session.add_all(categories)
         db.session.commit()
 
