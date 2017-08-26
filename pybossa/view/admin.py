@@ -126,6 +126,7 @@ def featured(project_id=None):
 @login_required
 @admin_required
 def users(user_id=None):
+    get_autoimport_jobs()
     """Manage users of PYBOSSA."""
     form = SearchForm(request.body)
     users = [user for user in user_repo.filter_by(admin=True)
