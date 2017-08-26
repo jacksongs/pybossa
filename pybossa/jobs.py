@@ -330,8 +330,11 @@ def get_autoimport_jobs(queue='low'):
     current_app.logger.error("This isn't really an error, autoimport was triggered!")
     """Get autoimport jobs."""
     from pybossa.core import project_repo
+    current_app.logger.error("v1a")
     import pybossa.cache.projects as cached_projects
+    current_app.logger.error("v1b")
     from pybossa.pro_features import ProFeatureHandler
+    current_app.logger.error("v1c")
     feature_handler = ProFeatureHandler(current_app.config.get('PRO_FEATURES'))
 
     timeout = current_app.config.get('TIMEOUT')
