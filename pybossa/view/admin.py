@@ -42,7 +42,7 @@ from pybossa.auth import ensure_authorized_to
 from pybossa.core import announcement_repo, project_repo, user_repo, sentinel
 from pybossa.feed import get_update_feed
 import pybossa.dashboard.data as dashb
-from pybossa.jobs import get_dashboard_jobs
+from pybossa.jobs import get_dashboard_jobs,get_autoimport_jobs
 import json
 from StringIO import StringIO
 
