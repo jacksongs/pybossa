@@ -326,7 +326,7 @@ def get_non_contributors_users_jobs(queue='quaterly'):
             yield job
 
 
-def get_autoimport_jobs(queue='high'):
+def get_autoimport_jobs(queue='maintenance'):
     current_app.logger.error("This isn't really an error, autoimport was triggered!")
     """Get autoimport jobs."""
     from pybossa.core import project_repo
