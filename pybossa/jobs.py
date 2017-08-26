@@ -339,12 +339,12 @@ def get_autoimport_jobs(queue='low'):
 
     timeout = current_app.config.get('TIMEOUT')
     current_app.logger.error("v2")
-    if feature_handler.only_for_pro('autoimporter'):
-        current_app.logger.error("v3a")
-        projects = cached_projects.get_from_pro_user()
-    else:
-        current_app.logger.error("v3b")
-        projects = (p.dictize() for p in project_repo.get_all())
+    #if feature_handler.only_for_pro('autoimporter'):
+    #    current_app.logger.error("v3a")
+    #    projects = cached_projects.get_from_pro_user()
+    #else:
+    current_app.logger.error("v3b")
+    projects = (p.dictize() for p in project_repo.get_all())
     current_app.logger.error("v4")
     current_app.logger.error(str(len(project_repo.get_all())))
     current_app.logger.error(str(len(projects)))
