@@ -317,6 +317,7 @@ def get_non_contributors_users_jobs(queue='quaterly'):
 
 def get_autoimport_jobs(queue='maintenance'):
     """Get autoimport jobs."""
+    print "Autoimport running at",datetime.datetime.now()
     from pybossa.core import project_repo
     import pybossa.cache.projects as cached_projects
     from pybossa.pro_features import ProFeatureHandler
