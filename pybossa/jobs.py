@@ -30,10 +30,10 @@ from pbsonesignal import PybossaOneSignal
 
 
 def schedule_job(function, scheduler, the_app):
-    the_app.logger.error("This isn't really an error, scheduled jobs was triggered!")
+    #the_app.logger.error("This isn't really an error, scheduled jobs was triggered!")
     """Schedule a job and return a log message."""
     scheduled_jobs = scheduler.get_jobs()
-    the_app.logger.error("1")
+    #the_app.logger.error("1")
     job = scheduler.schedule(
         scheduled_time=(function.get('scheduled_time') or datetime.utcnow()),
         func=function['name'],
@@ -42,7 +42,7 @@ def schedule_job(function, scheduler, the_app):
         interval=function['interval'],
         repeat=None,
         timeout=function['timeout'])
-    the_app.logger.error("2")
+    #the_app.logger.error("2")
     for sj in scheduled_jobs:
         if (function['name'].__name__ in sj.func_name and
             sj.args == function['args'] and
@@ -53,12 +53,12 @@ def schedule_job(function, scheduler, the_app):
                       function['kwargs']))
             the_app.logger.error(msg)
             return msg
-    the_app.logger.error("3")
+    #the_app.logger.error("3")
     msg = ('Scheduled %s(%s, %s) to run every %s seconds'
            % (function['name'].__name__, function['args'], function['kwargs'],
               function['interval']))
-    the_app.logger.error("4")
-    the_app.logger.error(msg)
+    #the_app.logger.error("4")
+    #the_app.logger.error(msg)
     return msg
 
 
@@ -118,7 +118,7 @@ def get_periodic_jobs(queue):
     zip_jobs = get_export_task_jobs(queue) if queue in ('high', 'low') else []
     # Based on type of user
     project_jobs = get_project_jobs(queue) if queue in ('super', 'high') else []
-    autoimport_jobs = get_autoimport_jobs() if queue == 'maintenance' else []
+    autoimport_jobs = get_autoimport_jobs() if queue == 'high' else []
     # User engagement jobs
     engage_jobs = get_inactive_users_jobs() if queue == 'quaterly' else []
     non_contrib_jobs = get_non_contributors_users_jobs() \
@@ -326,40 +326,40 @@ def get_non_contributors_users_jobs(queue='quaterly'):
             yield job
 
 
-def get_autoimport_jobs(queue='maintenance'):
+def get_autoimport_jobs(queue='high'):
     current_app.logger.error("This isn't really an error, autoimport was triggered!")
     """Get autoimport jobs."""
     from pybossa.core import project_repo
-    current_app.logger.error("v1a")
+    #current_app.logger.error("v1a")
     import pybossa.cache.projects as cached_projects
-    current_app.logger.error("v1b")
+    #current_app.logger.error("v1b")
     from pybossa.pro_features import ProFeatureHandler
-    current_app.logger.error("v1c")
+    #current_app.logger.error("v1c")
     feature_handler = ProFeatureHandler(current_app.config.get('PRO_FEATURES'))
 
     timeout = current_app.config.get('TIMEOUT')
-    current_app.logger.error("v2")
+    #current_app.logger.error("v2")
     #if feature_handler.only_for_pro('autoimporter'):
     #    current_app.logger.error("v3a")
     #    projects = cached_projects.get_from_pro_user()
     #else:
-    current_app.logger.error("v3b")
+    #current_app.logger.error("v3b")
     projects = (p.dictize() for p in project_repo.get_all())
-    current_app.logger.error("v4")
+    #current_app.logger.error("v4")
     for project_dict in projects:
-        current_app.logger.error("v5")
+        #current_app.logger.error("v5")
         project = project_repo.get(project_dict['id'])
-        current_app.logger.error(str(project))
+        #current_app.logger.error(str(project))
         if project.has_autoimporter():
-            current_app.logger.error(str(project))
-            current_app.logger.error("v6")
+            #current_app.logger.error(str(project))
+            #current_app.logger.error("v6")
             job = dict(name=import_tasks,
                        args=[project.id, True],
                        kwargs=project.get_autoimporter(),
                        timeout=timeout,
                        queue=queue)
-            current_app.logger.error(str(job))
-            current_app.logger.error("v7")
+            #current_app.logger.error(str(job))
+            #current_app.logger.error("v7")
             yield job
 
 
