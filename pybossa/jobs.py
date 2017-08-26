@@ -29,8 +29,8 @@ from pybossa.leaderboard.jobs import leaderboard
 from pbsonesignal import PybossaOneSignal
 
 
-def schedule_job(function, scheduler):
-    current_app.logger.error("This isn't really an error, scheduled jobs was triggered!")
+def schedule_job(function, scheduler, the_app):
+    the_app.logger.error("This isn't really an error, scheduled jobs was triggered!")
     """Schedule a job and return a log message."""
     scheduled_jobs = scheduler.get_jobs()
     job = scheduler.schedule(
@@ -53,7 +53,7 @@ def schedule_job(function, scheduler):
     msg = ('Scheduled %s(%s, %s) to run every %s seconds'
            % (function['name'].__name__, function['args'], function['kwargs'],
               function['interval']))
-    current_app.logger.error(msg)
+    the_app.logger.error(msg)
     return msg
 
 
