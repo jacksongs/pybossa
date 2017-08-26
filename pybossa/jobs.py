@@ -315,7 +315,7 @@ def get_non_contributors_users_jobs(queue='quaterly'):
             yield job
 
 
-def get_autoimport_jobs(queue='low'):
+def get_autoimport_jobs(queue='maintenance'):
     """Get autoimport jobs."""
     from pybossa.core import project_repo
     import pybossa.cache.projects as cached_projects
