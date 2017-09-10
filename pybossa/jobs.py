@@ -136,10 +136,12 @@ def get_periodic_jobs(queue):
 def get_default_jobs():  # pragma: no cover
     """Return default jobs."""
     timeout = current_app.config.get('TIMEOUT')
+    unpublish_projects = current_app.config.get('UNPUBLISH_PROJECTS')
     yield dict(name=warm_up_stats, args=[], kwargs={},
                timeout=timeout, queue='high')
-    yield dict(name=warn_old_project_owners, args=[], kwargs={},
-               timeout=timeout, queue='low')
+    if unpublish_projects:
+        yield dict(name=warn_old_project_owners, args=[], kwargs={},
+                   timeout=timeout, queue='low')
     yield dict(name=warm_cache, args=[], kwargs={},
                timeout=timeout, queue='super')
     yield dict(name=news, args=[], kwargs={},
@@ -287,6 +289,11 @@ def get_dashboard_jobs(queue='low'):  # pragma: no cover
 def get_leaderboard_jobs(queue='super'):  # pragma: no cover
     """Return leaderboard jobs."""
     timeout = current_app.config.get('TIMEOUT')
+    leaderboards = current_app.config.get('LEADERBOARDS')
+    if leaderboards:
+        for leaderboard_key in leaderboards:
+            yield dict(name=leaderboard, args=[], kwargs={'info': leaderboard_key},
+                       timeout=timeout, queue=queue)
     yield dict(name=leaderboard, args=[], kwargs={},
                timeout=timeout, queue=queue)
 

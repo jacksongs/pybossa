@@ -16,6 +16,7 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with PYBOSSA.  If not, see <http://www.gnu.org/licenses/>.
 
+import codecs
 import copy
 import json
 import os
@@ -204,14 +205,17 @@ class TestWeb(web.Helper):
 
         update_leaderboard()
 
+        for score in range(1, 11):
+            UserFactory.create(info=dict(n=score))
+
+        update_leaderboard(info='n')
+
         res = self.app_get_json('/leaderboard/window/3?api_key=%s' % user.api_key)
         data = json.loads(res.data)
         err_msg = 'Top users missing'
         assert 'top_users' in data, err_msg
         err_msg = 'leaderboard user information missing'
         leaders = data['top_users']
-        for u in leaders:
-            print u['rank'], u['name'], u['score']
         assert len(leaders) == (20+3+1+3), len(leaders)
         assert leaders[23]['name'] == user.name
 
@@ -221,11 +225,40 @@ class TestWeb(web.Helper):
         assert 'top_users' in data, err_msg
         err_msg = 'leaderboard user information missing'
         leaders = data['top_users']
-        for u in leaders:
-            print u['rank'], u['name'], u['score']
         assert len(leaders) == (20+10+1+10), len(leaders)
         assert leaders[30]['name'] == user.name
 
+        res = self.app_get_json('/leaderboard/?info=noleaderboards')
+        assert res.status_code == 404,  res.status_code
+
+        with patch.dict(self.flask_app.config, {'LEADERBOARDS': ['n']}):
+            res = self.app_get_json('/leaderboard/?info=n')
+            data = json.loads(res.data)
+            err_msg = 'Top users missing'
+            assert 'top_users' in data, err_msg
+            err_msg = 'leaderboard user information missing'
+            leaders = data['top_users']
+            assert len(leaders) == (20), len(leaders)
+            score = 10
+            rank = 1
+            for u in leaders[0:10]:
+                assert u['score'] == score, u
+                assert u['rank'] == rank, u
+                score = score - 1
+                rank = rank + 1
+
+            res = self.app_get_json('/leaderboard/window/3?api_key=%s&info=n' % user.api_key)
+            data = json.loads(res.data)
+            err_msg = 'Top users missing'
+            assert 'top_users' in data, err_msg
+            err_msg = 'leaderboard user information missing'
+            leaders = data['top_users']
+            assert len(leaders) == (20+3+1+3), len(leaders)
+            assert leaders[23]['name'] == user.name
+            assert leaders[23]['score'] == 0
+
+            res = self.app_get_json('/leaderboard/?info=new')
+            assert res.status_code == 404,  res.status_code
 
 
     @with_context
@@ -708,9 +741,10 @@ class TestWeb(web.Helper):
         account validation is enabled"""
         from flask import current_app
         current_app.config['ACCOUNT_CONFIRMATION_DISABLED'] = False
-        data = dict(fullname="John Doe", name="johndoe",
+        data = dict(fullname="AJohn Doe", name="johndoe",
                     password="p4ssw0rd", confirm="p4ssw0rd",
-                    email_addr="johndoe@example.com")
+                    email_addr="johndoe@example.com",
+                    consent=False)
         signer.dumps.return_value = ''
         render.return_value = ''
         res = self.app.post('/account/register', data=data)
@@ -741,7 +775,8 @@ class TestWeb(web.Helper):
             csrf = self.get_csrf('/account/register')
             data = dict(fullname="John Doe", name="johndoe",
                         password="p4ssw0rd", confirm="p4ssw0rd",
-                        email_addr="johndoe@example.com")
+                        email_addr="johndoe@example.com",
+                        consent=False)
             signer.dumps.return_value = ''
             render.return_value = ''
             res = self.app.post('/account/register', data=json.dumps(data),
@@ -804,7 +839,8 @@ class TestWeb(web.Helper):
         with patch.dict(self.flask_app.config, {'WTF_CSRF_ENABLED': True}):
             csrf = self.get_csrf('/account/register')
             data = dict(fullname="John Doe", name="johndoe", password='daniel',
-                        email_addr="new@mail.com", confirm='daniel')
+                        email_addr="new@mail.com", confirm='daniel',
+                        consent=True)
             res = self.app.post('/account/register', data=json.dumps(data),
                                 content_type='application/json',
                                 headers={'X-CSRFToken': csrf},
@@ -812,6 +848,10 @@ class TestWeb(web.Helper):
             cookie = self.check_cookie(res, 'remember_token')
             err_msg = "User should be logged in"
             assert "johndoe" in cookie, err_msg
+            user = user_repo.get_by(name='johndoe')
+            assert user.consent, user
+            assert user.name == 'johndoe', user
+            assert user.email_addr == 'new@mail.com', user
 
     @with_context
     def test_register_json_error(self):
@@ -1041,7 +1081,9 @@ class TestWeb(web.Helper):
         """Test WEB register confirmation gets the account data from the key"""
         exp_time = self.flask_app.config.get('ACCOUNT_LINK_EXPIRATION')
         fake_signer.loads.return_value = dict(fullname='FN', name='name',
-                                              email_addr='email', password='password')
+                                              email_addr='email',
+                                              password='password',
+                                              consent=True)
         res = self.app.get('/account/register/confirmation?key=valid-key')
 
         fake_signer.loads.assert_called_with('valid-key', max_age=exp_time, salt='account-validation')
@@ -1058,7 +1100,8 @@ class TestWeb(web.Helper):
 
         fake_signer.loads.return_value = dict(fullname=user.fullname,
                                               name=user.name,
-                                              email_addr=user.email_addr)
+                                              email_addr=user.email_addr,
+                                              consent=False)
         self.app.get('/account/register/confirmation?key=valid-key')
 
         user = db.session.query(User).get(1)
@@ -1080,7 +1123,8 @@ class TestWeb(web.Helper):
 
         fake_signer.loads.return_value = dict(fullname=user.fullname,
                                               name=user.name,
-                                              email_addr='new@email.com')
+                                              email_addr='new@email.com',
+                                              consent=True)
         self.app.get('/account/register/confirmation?key=valid-key')
 
         user = db.session.query(User).get(1)
@@ -1142,7 +1186,9 @@ class TestWeb(web.Helper):
     def test_register_confirmation_creates_new_account(self, fake_signer):
         """Test WEB register confirmation creates the new account"""
         fake_signer.loads.return_value = dict(fullname='FN', name='name',
-                                              email_addr='email', password='password')
+                                              email_addr='email',
+                                              password='password',
+                                              consent=False)
         res = self.app.get('/account/register/confirmation?key=valid-key')
 
         user = db.session.query(User).filter_by(name='name').first()
@@ -3668,9 +3714,10 @@ class TestWeb(web.Helper):
         assert 403 == res.status_code
 
     @with_context
+    @patch('pybossa.view.account.url_for')
     @patch('pybossa.view.account.mail_queue', autospec=True)
     @patch('pybossa.view.account.signer')
-    def test_45_password_reset_link_json(self, signer, queue):
+    def test_45_password_reset_link_json(self, signer, queue, mock_url):
         """Test WEB password reset email form"""
         csrf = self.get_csrf('/account/forgot-password')
         res = self.app.post('/account/forgot-password',
@@ -3710,10 +3757,12 @@ class TestWeb(web.Helper):
                             headers={'X-CSRFToken': csrf})
         resdata = json.loads(res.data)
         signer.dumps.assert_called_with(data, salt='password-reset')
+        key = signer.dumps(data, salt='password-reset')
         enqueue_call = queue.enqueue.call_args_list[0]
         assert send_mail == enqueue_call[0][0], "send_mail not called"
         assert 'Click here to recover your account' in enqueue_call[0][1]['body']
         assert 'To recover your password' in enqueue_call[0][1]['html']
+        assert mock_url.called_with('.reset_password', key=key, _external=True)
         err_msg = "There should be a flash message"
         assert resdata.get('flash'), err_msg
         assert "sent you an email" in resdata.get('flash'), err_msg
@@ -3782,6 +3831,27 @@ class TestWeb(web.Helper):
         msg = "Something went wrong, please correct the errors"
         assert msg in resdata.get('flash'), res.data
         assert resdata.get('form').get('errors').get('email_addr') is not None, resdata
+
+        with patch.dict(self.flask_app.config, {'SPA_SERVER_NAME':
+                                                'http://local.com'}):
+            data = {'password': user.passwd_hash, 'user': user.name}
+            csrf = self.get_csrf('/account/forgot-password')
+            res = self.app.post('/account/forgot-password',
+                                data=json.dumps({'email_addr': user.email_addr}),
+                                follow_redirects=False,
+                                content_type="application/json",
+                                headers={'X-CSRFToken': csrf})
+            resdata = json.loads(res.data)
+            signer.dumps.assert_called_with(data, salt='password-reset')
+            key = signer.dumps(data, salt='password-reset')
+            enqueue_call = queue.enqueue.call_args_list[0]
+            assert send_mail == enqueue_call[0][0], "send_mail not called"
+            assert 'Click here to recover your account' in enqueue_call[0][1]['body']
+            assert 'To recover your password' in enqueue_call[0][1]['html']
+            assert mock_url.called_with('.reset_password', key=key)
+            err_msg = "There should be a flash message"
+            assert resdata.get('flash'), err_msg
+            assert "sent you an email" in resdata.get('flash'), err_msg
 
 
     @with_context
@@ -4429,7 +4499,7 @@ class TestWeb(web.Helper):
             # Now with a real project
             project = ProjectFactory.create()
             self.clear_temp_container(project.owner_id)
-            
+
             TaskFactory.create_batch(5, project=project, info={'question': 'qu',
                                                                'geojson':
                                                                'complexjson'})
@@ -4527,7 +4597,7 @@ class TestWeb(web.Helper):
         project = ProjectFactory.create()
         self.clear_temp_container(project.owner_id)
         for i in range(0, 5):
-            task = TaskFactory.create(project=project, info={'question': i})
+            task = TaskFactory.create(project=project, info={u'eñe': i})
         uri = '/project/%s/tasks/export' % project.short_name
         res = self.app.get(uri, follow_redirects=True)
         heading = "Export All Tasks and Task Runs"
@@ -4536,7 +4606,11 @@ class TestWeb(web.Helper):
         # Now get the tasks in CSV format
         uri = "/project/%s/tasks/export?type=task&format=csv" % project.short_name
         res = self.app.get(uri, follow_redirects=True)
-        zip = zipfile.ZipFile(StringIO(res.data))
+        file_name = '/tmp/task_%s.zip' % project.short_name
+        with open(file_name, 'w') as f:
+            f.write(res.data)
+        zip = zipfile.ZipFile(file_name, 'r')
+        zip.extractall('/tmp')
         # Check only one file in zipfile
         err_msg = "filename count in ZIP is not 2"
         assert len(zip.namelist()) == 2, err_msg
@@ -4544,7 +4618,8 @@ class TestWeb(web.Helper):
         extracted_filename = zip.namelist()[0]
         assert extracted_filename == 'project1_task.csv', zip.namelist()[0]
 
-        csv_content = StringIO(zip.read(extracted_filename))
+        csv_content = codecs.open('/tmp/' + extracted_filename, 'r', 'utf-8')
+
         csvreader = unicode_csv_reader(csv_content)
         project = db.session.query(Project)\
                     .filter_by(short_name=project.short_name)\
@@ -4558,7 +4633,9 @@ class TestWeb(web.Helper):
                 keys = row
             n = n + 1
         err_msg = "The number of exported tasks is different from Project Tasks"
-        assert len(exported_tasks) == len(project.tasks), err_msg
+        assert len(exported_tasks) == len(project.tasks), (err_msg,
+                                                           len(exported_tasks),
+                                                           len(project.tasks))
         for t in project.tasks:
             err_msg = "All the task column names should be included"
             for tk in flatten(t.dictize()).keys():
@@ -4567,7 +4644,7 @@ class TestWeb(web.Helper):
             err_msg = "All the task.info column names should be included"
             for tk in t.info.keys():
                 expected_key = "info_%s" % tk
-                assert expected_key in keys, err_msg
+                assert expected_key in keys, (err_msg, expected_key, keys)
 
         for et in exported_tasks:
             task_id = et[keys.index('id')]
@@ -5964,7 +6041,7 @@ class TestWeb(web.Helper):
         res = self.app.get(url, follow_redirects=True)
         err_msg = "User should be redirected to sign in"
         project = db.session.query(Project).first()
-        msg = "Oops! You have to sign in to participate in &lt;strong&gt;%s&lt;/strong&gt;" % project.name
+        msg = "Oops! You have to sign in to participate in <strong>%s</strong>" % project.name
         assert msg in res.data, err_msg
 
         # As registered user

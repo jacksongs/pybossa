@@ -45,6 +45,7 @@ from pybossa.util import Pagination, handle_content_type
 from pybossa.util import get_user_signup_method
 from pybossa.util import redirect_content_type
 from pybossa.util import get_avatar_url
+from pybossa.util import url_for_app_type
 from pybossa.cache import users as cached_users
 from pybossa.auth import ensure_authorized_to
 from pybossa.jobs import send_mail
@@ -229,8 +230,7 @@ def signout():
 def get_email_confirmation_url(account):
     """Return confirmation url for a given user email."""
     key = signer.dumps(account, salt='account-validation')
-    confirm_url = url_for('.confirm_account', key=key, _external=True)
-    return confirm_url
+    return url_for_app_type('.confirm_account', key=key, _external=True)
 
 
 @blueprint.route('/confirm-email')
@@ -270,10 +270,13 @@ def register():
 
     """
     form = RegisterForm(request.body)
+    msg = "I accept receiving emails from %s" % current_app.config.get('BRAND')
+    form.consent.label = msg
     if request.method == 'POST' and form.validate():
         account = dict(fullname=form.fullname.data, name=form.name.data,
                        email_addr=form.email_addr.data,
-                       password=form.password.data)
+                       password=form.password.data,
+                       consent=form.consent.data)
         confirm_url = get_email_confirmation_url(account)
         if current_app.config.get('ACCOUNT_CONFIRMATION_DISABLED'):
             return _create_account(account)
@@ -347,7 +350,8 @@ def _create_account(user_data):
     new_user = model.user.User(fullname=user_data['fullname'],
                                name=user_data['name'],
                                email_addr=user_data['email_addr'],
-                               valid_email=True)
+                               valid_email=True,
+                               consent=user_data['consent'])
     new_user.set_password(user_data['password'])
     user_repo.save(new_user)
     flash(gettext('Thanks for signing-up'), 'success')
@@ -711,8 +715,8 @@ def forgot_password():
             else:
                 userdict = {'user': user.name, 'password': user.passwd_hash}
                 key = signer.dumps(userdict, salt='password-reset')
-                recovery_url = url_for('.reset_password',
-                                       key=key, _external=True)
+                recovery_url = url_for_app_type('.reset_password',
+                                                key=key, _external=True)
                 msg['body'] = render_template(
                     '/account/email/forgot_password.md',
                     user=user, recovery_url=recovery_url)

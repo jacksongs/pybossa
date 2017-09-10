@@ -49,7 +49,7 @@ class Task(db.Model, DomainObject):
     #: Task.info field in JSON with the data for the task.
     info = Column(JSON)
     #: Number of answers to collect for this task.
-    n_answers = Column(Integer, default=3)
+    n_answers = Column(Integer, default=2)
     #: Array of User IDs that favorited this task
     fav_user_ids = Column(MutableList.as_mutable(ARRAY(Integer)))
 

@@ -16,7 +16,7 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with PYBOSSA.  If not, see <http://www.gnu.org/licenses/>.
 
-DEBUG = False
+DEBUG = True
 
 # webserver host and port
 HOST = '0.0.0.0'
@@ -158,3 +158,6 @@ TIMEOUT = 10 * MINUTE
 # OneSignal GCM Sender ID
 # DO NOT MODIFY THIS
 GCM_SENDER_ID = "482941778795"
+
+# Unpublish inactive projects
+UNPUBLISH_PROJECTS = True
