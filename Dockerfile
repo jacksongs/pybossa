@@ -26,6 +26,8 @@ RUN set -x && \
     adduser -D -G pybossa -s /bin/sh -h /usr/src/app/pybossa pybossa && \
     passwd -u pybossa
 
+RUN echo a!!
+
 COPY . /usr/src/app/pybossa
 
 # TODO: we shouldn't need write permissions on the whole folder

@@ -166,8 +166,24 @@ def project_index(page, lookup, category, fallback, use_count):
     per_page = current_app.config['APPS_PER_PAGE']
 
     ranked_projects = rank(lookup(category))
+    
+    final_projects = []
+    # Get whether the user can contribute
+    
+    user_id = None if current_user.is_anonymous() else current_user.id
+    user_ip = request.remote_addr if current_user.is_anonymous() else None
+    
+    for proj in ranked_projects:
+        current_app.logger.info(proj)
+        task = sched.new_task(proj['id'], None, user_id, user_ip, 0)
+        if task != []:
+            proj['MoreToDo'] = True
+        else:
+            proj['MoreToDo'] = False
+        final_projects.append(proj)
+
     offset = (page - 1) * per_page
-    projects = ranked_projects[offset:offset+per_page]
+    projects = final_projects[offset:offset+per_page]
 
     count = cached_projects.n_count(category)
 
