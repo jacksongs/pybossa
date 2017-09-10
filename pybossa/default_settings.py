@@ -47,7 +47,7 @@ LOCALES = [('en', 'English'), ('es', u'Español'),
 THEME = 'burn'
 
 ## Default number of apps per page
-APPS_PER_PAGE = 20
+APPS_PER_PAGE = 100
 
 ## Default allowed extensions
 ALLOWED_EXTENSIONS = ['js', 'css', 'png', 'jpg', 'jpeg', 'gif', 'zip']
