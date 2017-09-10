@@ -45,8 +45,7 @@ class ProjectAPI(APIBase):
     """
 
     __class__ = Project
-    reserved_keys = set(['id', 'created', 'updated', 'completed', 'contacted',
-                         'secret_key'])
+    reserved_keys = set(['id', 'created', 'updated', 'completed', 'contacted'])
     private_keys = set(['secret_key'])
 
     def _create_instance_from_request(self, data):
