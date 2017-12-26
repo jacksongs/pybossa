@@ -81,8 +81,16 @@ class Hateoas(object):
                 links = [self.create_link(item.project_id,
                                           title='project', rel='parent')]
             return links, link
+        elif cls == 'announcement':
+            return None, self.create_link(item.id, title='announcement')
         elif cls == 'helpingmaterial':
             link = self.create_link(item.id, title='helpingmaterial')
+            if item.project_id is not None:
+                links = [self.create_link(item.project_id,
+                                          title='project', rel='parent')]
+            return links, link
+        elif cls == 'projectstats':
+            link = self.create_link(item.id, title='projectstats')
             if item.project_id is not None:
                 links = [self.create_link(item.project_id,
                                           title='project', rel='parent')]

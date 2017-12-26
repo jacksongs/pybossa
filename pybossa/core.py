@@ -63,6 +63,7 @@ def create_app(run_as_server=True):
     setup_blueprints(app)
     setup_hooks(app)
     setup_error_handlers(app)
+    setup_ldap(app)
     setup_external_services(app)
     setup_jinja(app)
     setup_geocoding(app)
@@ -73,6 +74,7 @@ def create_app(run_as_server=True):
     setup_sse(app)
     setup_json_serializer(app)
     setup_cors(app)
+    setup_profiler(app)
     plugin_manager.init_app(app)
     plugin_manager.install_plugins()
     import pybossa.model.event_listeners
@@ -181,6 +183,7 @@ def setup_repositories(app):
     """Setup repositories."""
     from pybossa.repositories import UserRepository
     from pybossa.repositories import ProjectRepository
+    from pybossa.repositories import ProjectStatsRepository
     from pybossa.repositories import AnnouncementRepository
     from pybossa.repositories import BlogRepository
     from pybossa.repositories import TaskRepository
@@ -190,6 +193,7 @@ def setup_repositories(app):
     from pybossa.repositories import HelpingMaterialRepository
     global user_repo
     global project_repo
+    global project_stats_repo
     global announcement_repo
     global blog_repo
     global task_repo
@@ -200,6 +204,7 @@ def setup_repositories(app):
     language = app.config.get('FULLTEXTSEARCH_LANGUAGE')
     user_repo = UserRepository(db)
     project_repo = ProjectRepository(db)
+    project_stats_repo = ProjectStatsRepository(db)
     announcement_repo = AnnouncementRepository(db)
     blog_repo = BlogRepository(db)
     task_repo = TaskRepository(db, language)
@@ -339,7 +344,8 @@ def setup_twitter_login(app):
 def setup_facebook_login(app):
     try:  # pragma: no cover
         if (app.config['FACEBOOK_APP_ID']
-                and app.config['FACEBOOK_APP_SECRET']):
+                and app.config['FACEBOOK_APP_SECRET']
+                and app.config.get('LDAP_HOST') is None):
             facebook.init_app(app)
             from pybossa.view.facebook import blueprint as facebook_bp
             app.register_blueprint(facebook_bp, url_prefix='/facebook')
@@ -355,7 +361,8 @@ def setup_facebook_login(app):
 def setup_google_login(app):
     try:  # pragma: no cover
         if (app.config['GOOGLE_CLIENT_ID']
-                and app.config['GOOGLE_CLIENT_SECRET']):
+                and app.config['GOOGLE_CLIENT_SECRET']
+                and app.config.get('LDAP_HOST') is None):
             google.init_app(app)
             from pybossa.view.google import blueprint as google_bp
             app.register_blueprint(google_bp, url_prefix='/google')
@@ -564,6 +571,9 @@ def setup_hooks(app):
         # Available plugins
         plugins = plugin_manager.plugins
 
+        # LDAP enabled
+        ldap_enabled = app.config.get('LDAP_HOST', False)
+
         return dict(
             brand=app.config['BRAND'],
             title=app.config['TITLE'],
@@ -581,7 +591,8 @@ def setup_hooks(app):
             upload_method=app.config['UPLOAD_METHOD'],
             news=news,
             notify_admin=notify_admin,
-            plugins=plugins)
+            plugins=plugins,
+            ldap_enabled=ldap_enabled)
 
     @csrf.error_handler
     def csrf_error_handler(reason):
@@ -696,3 +707,11 @@ def setup_assets(app):
 def setup_strong_password(app):
     global enable_strong_password
     enable_strong_password = app.config.get('ENABLE_STRONG_PASSWORD')
+
+def setup_ldap(app):
+    if app.config.get('LDAP_HOST'):
+        ldap.init_app(app)
+
+def setup_profiler(app):
+    if app.config.get('FLASK_PROFILER'):
+        flask_profiler.init_app(app)

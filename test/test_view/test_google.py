@@ -16,7 +16,7 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with PYBOSSA.  If not, see <http://www.gnu.org/licenses/>.
 from default import Test, with_context
-from pybossa.view.google import manage_user, manage_user_login
+from pybossa.view.google import manage_user, manage_user_login, google
 from mock import patch
 from factories import UserFactory
 
@@ -111,7 +111,7 @@ class TestGoogle(Test):
         login_user.assert_called_with(user, remember=True)
         assert user.newsletter_prompted is False
         url_for_app_type.assert_called_with('account.newsletter_subscribe',
-                                            next=next_url)
+                                            next=next_url, _hash_last_flash=True)
 
     @with_context
     @patch('pybossa.view.google.newsletter', autospec=True)
@@ -150,7 +150,8 @@ class TestGoogle(Test):
         next_url = '/'
         manage_user_login(None, user_data, next_url=next_url)
         assert login_user.called is False
-        url_for_app_type.assert_called_with('account.forgot_password')
+        url_for_app_type.assert_called_with('account.forgot_password',
+                                            _hash_last_flash=True)
 
     @with_context
     @patch('pybossa.view.google.newsletter', autospec=True)
@@ -169,4 +170,14 @@ class TestGoogle(Test):
         next_url = '/'
         manage_user_login(None, user_data, next_url=next_url)
         assert login_user.called is False
-        url_for_app_type.assert_called_with('account.signin')
+        url_for_app_type.assert_called_with('account.signin',
+                                            _hash_last_flash=True)
+
+    @with_context
+    @patch('pybossa.view.google.url_for', return_value=True)
+    def test_request_token_params_set_correctly_with_next(self, url_for):
+        self.app.get('/google/?next=somewhere')
+        assert google.oauth.request_token_params == {
+            'scope': 'profile email'
+        }
+        url_for.assert_called_with('.oauth_authorized', _external=True)
