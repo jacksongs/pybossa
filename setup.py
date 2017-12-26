@@ -61,11 +61,10 @@ requirements = [
     "flatten-json",
     "uwsgi",
     "dicttoxml>=1.7.0, <2", # for the data plugin
-    "otpauth>=1.0.1, <1.0.2"
     "otpauth>=1.0.1, <1.0.2",
     "Flask-SimpleLDAP >=1.1.2, <1.1.3",
-    "flask_profiler >= 1.6, <1.6.1",
-
+    "flask_profiler >= 1.6, <1.6.1"
+]
 setup(
     name = 'pybossa',
     version = '2.8.1',
