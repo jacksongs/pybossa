@@ -7,6 +7,7 @@ ENV REDIS_MASTER=mymaster
 RUN set -x && \
     apk --no-cache add postgresql-dev g++ gcc git jpeg-dev libffi-dev libjpeg libxml2-dev libxslt-dev linux-headers musl-dev openssl zlib zlib-dev
 
+# This is for LDAP support in pybossa 2.8. The two steps can be combined with openldap-dev replacing openldap at the next opportunity.
 RUN set -x && \
 	apk --no-cache add openldap openldap-clients openldap-back-hdb openldap-back-bdb ldapvi
 
