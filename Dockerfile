@@ -7,6 +7,12 @@ ENV REDIS_MASTER=mymaster
 RUN set -x && \
     apk --no-cache add postgresql-dev g++ gcc git jpeg-dev libffi-dev libjpeg libxml2-dev libxslt-dev linux-headers musl-dev openssl zlib zlib-dev
 
+RUN set -x && \
+	apk --no-cache add openldap openldap-clients openldap-back-hdb openldap-back-bdb ldapvi
+
+RUN set -x && \
+	apk --no-cache add openldap-dev
+
 # Create the working directory
 RUN mkdir -p /usr/src/app/pybossa
 ADD requirements.txt /usr/src/app/pybossa
@@ -25,6 +31,12 @@ RUN set -x && \
     addgroup pybossa  && \
     adduser -D -G pybossa -s /bin/sh -h /usr/src/app/pybossa pybossa && \
     passwd -u pybossa
+
+RUN set -x && \
+    pip uninstall -y numpy && \
+    pip uninstall -y pandas && \
+    pip install numpy && \
+    pip install pandas
 
 RUN echo a!!
 

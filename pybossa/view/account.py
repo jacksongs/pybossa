@@ -46,10 +46,11 @@ from pybossa.util import get_user_signup_method
 from pybossa.util import redirect_content_type
 from pybossa.util import get_avatar_url
 from pybossa.util import url_for_app_type
+from pybossa.util import fuzzyboolean
 from pybossa.cache import users as cached_users
 from pybossa.auth import ensure_authorized_to
 from pybossa.jobs import send_mail
-from pybossa.core import user_repo
+from pybossa.core import user_repo, ldap
 from pybossa.feed import get_update_feed
 from pybossa.messages import *
 from pybossa import otp
@@ -97,7 +98,9 @@ def signin():
 
     """
     form = LoginForm(request.body)
-    if request.method == 'POST' and form.validate():
+    isLdap = current_app.config.get('LDAP_HOST', False)
+    if (request.method == 'POST' and form.validate()
+            and isLdap is False):
         password = form.password.data
         email = form.email.data
         user = user_repo.get_by(email_addr=email)
@@ -124,17 +127,43 @@ def signin():
                           did you sign up?")
             flash(msg, 'info')
 
+    if (request.method == 'POST' and form.validate()
+            and isLdap):
+        password = form.password.data
+        cn = form.email.data
+        ldap_user = None
+        if ldap.bind_user(cn, password):
+            ldap_user = ldap.get_object_details(cn)
+            key = current_app.config.get('LDAP_USER_FILTER_FIELD')
+            value = ldap_user[key][0]
+            user_db = user_repo.get_by(ldap=value)
+            if (user_db is None):
+                keyfields = current_app.config.get('LDAP_PYBOSSA_FIELDS')
+                user_data = dict(fullname=ldap_user[keyfields['fullname']][0],
+                                 name=ldap_user[keyfields['name']][0],
+                                 email_addr=ldap_user[keyfields['email_addr']][0],
+                                 valid_email=True,
+                                 ldap=value,
+                                 consent=False)
+                _create_account(user_data, ldap_disabled=False)
+            else:
+                login_user(user_db, remember=True)
+        else:
+            msg = gettext("User LDAP credentials are wrong.")
+            flash(msg, 'info')
+
     if request.method == 'POST' and not form.validate():
         flash(gettext('Please correct the errors'), 'error')
     auth = {'twitter': False, 'facebook': False, 'google': False}
     if current_user.is_anonymous():
         # If Twitter is enabled in config, show the Twitter Sign in button
-        if ('twitter' in current_app.blueprints):  # pragma: no cover
-            auth['twitter'] = True
-        if ('facebook' in current_app.blueprints):  # pragma: no cover
-            auth['facebook'] = True
-        if ('google' in current_app.blueprints):  # pragma: no cover
-            auth['google'] = True
+        if (isLdap is False):
+            if ('twitter' in current_app.blueprints):  # pragma: no cover
+                auth['twitter'] = True
+            if ('facebook' in current_app.blueprints):  # pragma: no cover
+                auth['facebook'] = True
+            if ('google' in current_app.blueprints):  # pragma: no cover
+                auth['google'] = True
         response = dict(template='account/signin.html',
                         title="Sign in",
                         form=form,
@@ -148,7 +177,8 @@ def signin():
 
 def _sign_in_user(user):
     login_user(user, remember=True)
-    if newsletter.ask_user_to_subscribe(user):
+    if (current_app.config.get('MAILCHIMP_API_KEY') and
+            newsletter.ask_user_to_subscribe(user)):
         return redirect_content_type(url_for('account.newsletter_subscribe',
                                              next=request.args.get('next')))
     return redirect_content_type(request.args.get("next") or
@@ -269,6 +299,8 @@ def register():
     Returns a Jinja2 template
 
     """
+    if current_app.config.get('LDAP_HOST', False):
+        return abort(404)
     form = RegisterForm(request.body)
     msg = "I accept receiving emails from %s" % current_app.config.get('BRAND')
     form.consent.label = msg
@@ -345,14 +377,17 @@ def confirm_account():
         return _update_user_with_valid_email(user, userdict['email_addr'])
     return _create_account(userdict)
 
-
-def _create_account(user_data):
+def _create_account(user_data, ldap_disabled=True):
     new_user = model.user.User(fullname=user_data['fullname'],
                                name=user_data['name'],
                                email_addr=user_data['email_addr'],
                                valid_email=True,
                                consent=user_data['consent'])
-    new_user.set_password(user_data['password'])
+    if ldap_disabled:
+        new_user.set_password(user_data['password'])
+    else:
+        if user_data.get('ldap'):
+            new_user.ldap = user_data['ldap']
     user_repo.save(new_user)
     flash(gettext('Thanks for signing-up'), 'success')
     return _sign_in_user(new_user)
@@ -485,7 +520,8 @@ def update_profile(name):
     # Extend the values
     user.rank = usr.get('rank')
     user.score = usr.get('score')
-    if request.body.get('btn') != 'Profile':
+    btn = request.body.get('btn', 'None').capitalize()
+    if btn != 'Profile':
         update_form = UpdateProfileForm(formdata=None, obj=user)
     else:
         update_form = UpdateProfileForm(obj=user)
@@ -498,21 +534,23 @@ def update_profile(name):
     if request.method == 'POST':
         # Update user avatar
         succeed = False
-        if request.body.get('btn') == 'Upload':
+        btn = request.body.get('btn', 'None').capitalize()
+        if btn == 'Upload':
             succeed = _handle_avatar_update(user, avatar_form)
         # Update user profile
-        elif request.body.get('btn') == 'Profile':
+        elif btn == 'Profile':
             succeed = _handle_profile_update(user, update_form)
         # Update user password
-        elif request.body.get('btn') == 'Password':
+        elif btn == 'Password':
             succeed = _handle_password_update(user, password_form)
         # Update user external services
-        elif request.body.get('btn') == 'External':
+        elif btn == 'External':
             succeed = _handle_external_services_update(user, update_form)
         # Otherwise return 415
         else:
             return abort(415)
         if succeed:
+            cached_users.delete_user_summary(user.name)
             return redirect_content_type(url_for('.update_profile',
                                                  name=user.name),
                                          status=SUCCESS)
@@ -551,9 +589,9 @@ def _handle_avatar_update(user, avatar_form):
         upload_method = current_app.config.get('UPLOAD_METHOD')
         avatar_url = get_avatar_url(upload_method,
                                     _file.filename, container)
-        user.info = {'avatar': _file.filename,
-                     'container': container,
-                     'avatar_url': avatar_url}
+        user.info['avatar'] = _file.filename
+        user.info['container'] = container
+        user.info['avatar_url'] = avatar_url
         user_repo.update(user)
         cached_users.delete_user_summary(user.name)
         flash(gettext('Your avatar has been updated! It may \
@@ -595,9 +633,9 @@ def _handle_profile_update(user, update_form):
             return True
         if acc_conf_dis:
             user.email_addr = update_form.email_addr.data
-        user.privacy_mode = update_form.privacy_mode.data
+        user.privacy_mode = fuzzyboolean(update_form.privacy_mode.data)
         user.locale = update_form.locale.data
-        user.subscribed = update_form.subscribed.data
+        user.subscribed = fuzzyboolean(update_form.subscribed.data)
         user_repo.update(user)
         cached_users.delete_user_summary(user.name)
         flash(gettext('Your profile has been updated!'), 'success')

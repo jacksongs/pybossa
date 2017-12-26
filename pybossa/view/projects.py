@@ -47,7 +47,7 @@ from pybossa.model.webhook import Webhook
 from pybossa.model.blogpost import Blogpost
 from pybossa.util import (Pagination, admin_required, get_user_id_or_ip, rank,
                           handle_content_type, redirect_content_type,
-                          get_avatar_url)
+                          get_avatar_url, fuzzyboolean)
 from pybossa.auth import ensure_authorized_to
 from pybossa.cache import projects as cached_projects
 from pybossa.cache import users as cached_users
@@ -60,6 +60,7 @@ from pybossa.cookies import CookieHandler
 from pybossa.password_manager import ProjectPasswdManager
 from pybossa.jobs import import_tasks, webhook
 from pybossa.forms.projects_view_forms import *
+from pybossa.forms.admin_view_forms import SearchForm
 from pybossa.importers import BulkImportException
 from pybossa.pro_features import ProFeatureHandler
 
@@ -68,6 +69,7 @@ from pybossa.core import (project_repo, user_repo, task_repo, blog_repo,
 from pybossa.auditlogger import AuditLogger
 from pybossa.contributions_guard import ContributionsGuard
 from pybossa.default_settings import TIMEOUT
+from pybossa.exporter.csv_reports_export import ProjectReportCsvExporter
 
 blueprint = Blueprint('project', __name__)
 
@@ -112,6 +114,16 @@ def sanitize_project_owner(project, owner, current_user, ps=None):
         project_sanitized['overall_progress'] = ps.overall_progress
     return project_sanitized, owner_sanitized
 
+def zip_enabled(project, user):
+    """Return if the user can download a ZIP file."""
+    if project.zip_download is False:
+        if user.is_anonymous():
+            return abort(401)
+        if (user.is_authenticated() and
+            (user.id not in project.owners_ids and
+                user.admin is False)):
+            return abort(403)
+
 
 def project_title(project, page_name):
     if not project:  # pragma: no cover
@@ -122,14 +134,13 @@ def project_title(project, page_name):
 
 
 def project_by_shortname(short_name):
-    project = cached_projects.get_project(short_name)
+    project = project_repo.get_by(short_name=short_name)
     if project:
         # Get owner
         ps = stats.get_stats(project.id, full=True)
         owner = user_repo.get(project.owner_id)
         return (project, owner, ps)
     else:
-        cached_projects.delete_project(short_name)
         return abort(404)
 
 
@@ -151,20 +162,22 @@ def pro_features(owner=None):
 @blueprint.route('/category/featured/page/<int:page>/')
 def index(page):
     """List projects in the system"""
+    order_by = request.args.get('orderby', None)
+    desc = bool(request.args.get('desc', False))
     if cached_projects.n_count('featured') > 0:
         return project_index(page, cached_projects.get_all_featured,
-                             'featured',
-                             True, False)
+                             'featured', True, False, order_by, desc)
     else:
         categories = cached_cat.get_all()
         cat_short_name = categories[0].short_name
         return redirect_content_type(url_for('.project_cat_index', category=cat_short_name))
 
 
-def project_index(page, lookup, category, fallback, use_count):
+def project_index(page, lookup, category, fallback, use_count, order_by=None,
+                  desc=False):
     """Show projects of a category"""
-
     per_page = current_app.config['APPS_PER_PAGE']
+    ranked_projects = rank(lookup(category), order_by, desc)
 
     ranked_projects = rank(lookup(category))
     
@@ -185,10 +198,7 @@ def project_index(page, lookup, category, fallback, use_count):
 
     offset = (page - 1) * per_page
     projects = final_projects[offset:offset+per_page]
-
     count = cached_projects.n_count(category)
-
-    data = []
 
     if fallback and not projects:  # pragma: no cover
         return redirect(url_for('.index'))
@@ -230,15 +240,20 @@ def project_index(page, lookup, category, fallback, use_count):
 @admin_required
 def draft(page):
     """Show the Draft projects"""
+    order_by = request.args.get('orderby', None)
+    desc = bool(request.args.get('desc', False))
     return project_index(page, cached_projects.get_all_draft, 'draft',
-                     False, True)
+                         False, True, order_by, desc)
 
 
 @blueprint.route('/category/<string:category>/', defaults={'page': 1})
 @blueprint.route('/category/<string:category>/page/<int:page>/')
 def project_cat_index(category, page):
     """Show Projects that belong to a given category"""
-    return project_index(page, cached_projects.get_all, category, False, True)
+    order_by = request.args.get('orderby', None)
+    desc = bool(request.args.get('desc', False))
+    return project_index(page, cached_projects.get_all, category, False, True,
+                         order_by, desc)
 
 
 @blueprint.route('/new', methods=['GET', 'POST'])
@@ -283,7 +298,8 @@ def new():
                       long_description=form.long_description.data,
                       owner_id=current_user.id,
                       info=info,
-                      category_id=category_by_default.id)
+                      category_id=category_by_default.id,
+                      owners_ids=[current_user.id])
 
     project_repo.save(project)
 
@@ -453,18 +469,19 @@ def update(short_name):
             new_project.webhook = form.webhook.data
             new_project.info = project.info
             new_project.owner_id = project.owner_id
-            new_project.allow_anonymous_contributors = form.allow_anonymous_contributors.data
+            new_project.allow_anonymous_contributors = fuzzyboolean(form.allow_anonymous_contributors.data)
             new_project.category_id = form.category_id.data
+            new_project.zip_download = fuzzyboolean(form.zip_download.data)
 
-        if form.protect.data and form.password.data:
+        if fuzzyboolean(form.protect.data) and form.password.data:
             new_project.set_password(form.password.data)
-        if not form.protect.data:
+        if not fuzzyboolean(form.protect.data):
             new_project.set_password("")
 
         project_repo.update(new_project)
         auditlogger.add_log_entry(old_project, new_project, current_user)
         cached_cat.reset()
-        cached_projects.get_project(new_project.short_name)
+        cached_projects.clean_project(new_project.id)
         flash(gettext('Project updated!'), 'success')
         return redirect_content_type(url_for('.details',
                                      short_name=new_project.short_name))
@@ -1007,6 +1024,9 @@ def tasks_browse(short_name, page=1):
             return redirect_to_password
     else:
         ensure_authorized_to('read', project)
+
+    zip_enabled(project, current_user)
+
     project = add_custom_contrib_button_to(project, get_user_id_or_ip())
     return respond()
 
@@ -1064,6 +1084,8 @@ def export_to(short_name):
             return redirect_to_password
     else:
         ensure_authorized_to('read', project)
+
+    zip_enabled(project, current_user)
 
     def respond():
         return render_template('/projects/export.html',
@@ -1563,7 +1585,6 @@ def new_blogpost(short_name):
                         project_id=project.id)
     ensure_authorized_to('create', blogpost)
     blog_repo.save(blogpost)
-    cached_projects.delete_project(short_name)
 
     msg_1 = gettext('Blog post created!')
     flash(Markup('<i class="icon-ok"></i> {}').format(msg_1), 'success')
@@ -1612,7 +1633,6 @@ def update_blogpost(short_name, id):
                         project_id=project.id,
                         published=form.published.data)
     blog_repo.update(blogpost)
-    cached_projects.delete_project(short_name)
 
     msg_1 = gettext('Blog post updated!')
     flash(Markup('<i class="icon-ok"></i> {}').format(msg_1), 'success')
@@ -1630,7 +1650,6 @@ def delete_blogpost(short_name, id):
 
     ensure_authorized_to('delete', blogpost)
     blog_repo.delete(blogpost)
-    cached_projects.delete_project(short_name)
     msg_1 = gettext('Blog post deleted!')
     flash(Markup('<i class="icon-ok"></i> {}').format(msg_1), 'success')
     return redirect(url_for('.show_blogposts', short_name=short_name))
@@ -1672,19 +1691,23 @@ def auditlog(short_name):
 def publish(short_name):
 
     project, owner, ps = project_by_shortname(short_name)
-
+    project_sanitized, owner_sanitized = sanitize_project_owner(project, owner,
+                                                                current_user,
+                                                                ps)
     pro = pro_features()
     ensure_authorized_to('publish', project)
     if request.method == 'GET':
-        return render_template('projects/publish.html',
-                                project=project,
-                                pro_features=pro)
+        template_args = {"project": project_sanitized,
+                         "pro_features": pro,
+                         "csrf": generate_csrf()}
+        response = dict(template = '/projects/publish.html', **template_args)
+        return handle_content_type(response)
+
     project.published = True
     project_repo.save(project)
     task_repo.delete_taskruns_from_project(project)
     result_repo.delete_results_from_project(project)
     webhook_repo.delete_entries_from_project(project)
-    cached_projects.delete_project(short_name)
     auditlogger.log_event(project, current_user, 'update', 'published', False, True)
     flash(gettext('Project published! Volunteers will now be able to help you!'))
     return redirect(url_for('.details', short_name=project.short_name))
@@ -1706,7 +1729,7 @@ def project_stream_uri_private(short_name):
     if current_app.config.get('SSE'):
         project, owner, ps = project_by_shortname(short_name)
 
-        if (current_user.id == project.owner_id or current_user.admin):
+        if current_user.id in project.owners_ids or current_user.admin:
             return Response(project_event_stream(short_name, 'private'),
                             mimetype="text/event-stream",
                             direct_passthrough=True)
@@ -1831,7 +1854,208 @@ def reset_secret_key(short_name):
 
     project.secret_key = make_uuid()
     project_repo.update(project)
-    cached_projects.delete_project(short_name)
     msg = gettext('New secret key generated')
     flash(msg, 'success')
     return redirect_content_type(url_for('.update', short_name=short_name))
+
+
+@blueprint.route('/<short_name>/transferownership', methods=['GET', 'POST'])
+@login_required
+def transfer_ownership(short_name):
+    """Transfer project ownership."""
+
+    project, owner, ps = project_by_shortname(short_name)
+
+    pro = pro_features()
+
+    title = project_title(project, "Results")
+
+    ensure_authorized_to('update', project)
+
+    form = TransferOwnershipForm(request.body)
+
+    if request.method == 'POST' and form.validate():
+        new_owner = user_repo.filter_by(email_addr=form.email_addr.data)
+        if len(new_owner) == 1:
+            new_owner = new_owner[0]
+            project.owner_id = new_owner.id
+            project.owners_ids = [new_owner.id]
+            project_repo.update(project)
+            msg = gettext("Project owner updated")
+            flash(msg, 'info')
+            return redirect_content_type(url_for('.details',
+                                                 short_name=short_name))
+        else:
+            msg = gettext("New project owner not found by email")
+            flash(msg, 'info')
+            return redirect_content_type(url_for('.transfer_ownership',
+                                                 short_name=short_name))
+    else:
+        owner_serialized = cached_users.get_user_summary(owner.name)
+        project = add_custom_contrib_button_to(project, get_user_id_or_ip(), ps=ps)
+        response = dict(template='/projects/transferownership.html',
+                        project=project,
+                        owner=owner_serialized,
+                        n_tasks=ps.n_tasks,
+                        overall_progress=ps.overall_progress,
+                        n_task_runs=ps.n_task_runs,
+                        last_activity=ps.last_activity,
+                        n_completed_tasks=ps.n_completed_tasks,
+                        n_volunteers=ps.n_volunteers,
+                        title=title,
+                        pro_features=pro,
+                        form=form,
+                        target='.transfer_ownership')
+        return handle_content_type(response)
+
+
+@blueprint.route('/<short_name>/coowners', methods=['GET', 'POST'])
+@login_required
+def coowners(short_name):
+    """Manage coowners of a project."""
+    form = SearchForm(request.form)
+    project = project_repo.get_by_shortname(short_name)
+    owners = user_repo.get_users(project.owners_ids)
+    pub_owners = [user.to_public_json() for user in owners]
+    for owner, p_owner in zip(owners, pub_owners):
+        if owner.id == project.owner_id:
+            p_owner['is_creator'] = True
+
+    ensure_authorized_to('read', project)
+    ensure_authorized_to('update', project)
+
+    response = dict(
+        template='/projects/coowners.html',
+        project=project.to_public_json(),
+        coowners=pub_owners,
+        title=gettext("Manage Co-owners"),
+        form=form,
+        pro_features=pro_features()
+    )
+
+    if request.method == 'POST' and form.user.data:
+        query = form.user.data
+        user = user_repo.get_by_name(query)
+
+        if not user or user.id == current_user.id:
+            markup = Markup('<strong>{}</strong> {} <strong>{}</strong>')
+            flash(markup.format(gettext("Ooops!"),
+                                gettext("We didn't find a user matching your query:"),
+                                form.user.data))
+        else:
+            found = user.to_public_json()
+            found['is_coowner'] = user.id in project.owners_ids
+            found['is_creator'] = user.id == project.owner_id
+            response['found'] = found
+
+    return handle_content_type(response)
+
+
+@blueprint.route('/<short_name>/add_coowner/<user_name>')
+@login_required
+def add_coowner(short_name, user_name=None):
+    """Add project co-owner."""
+    project = project_repo.get_by_shortname(short_name)
+    user = user_repo.get_by_name(user_name)
+
+    ensure_authorized_to('read', project)
+    ensure_authorized_to('update', project)
+
+    if project and user:
+        if user.id in project.owners_ids:
+            flash(gettext('User is already an owner'), 'warning')
+        else:
+            project.owners_ids.append(user.id)
+            project_repo.update(project)
+            flash(gettext('User was added to list of owners'), 'success')
+        return redirect_content_type(url_for(".coowners", short_name=short_name))
+    return abort(404)
+
+
+@blueprint.route('/<short_name>/del_coowner/<user_name>')
+@login_required
+def del_coowner(short_name, user_name=None):
+    """Delete project co-owner."""
+    project = project_repo.get_by_shortname(short_name)
+    user = user_repo.get_by_name(user_name)
+
+    ensure_authorized_to('read', project)
+    ensure_authorized_to('update', project)
+
+    if project and user:
+        if user.id == project.owner_id:
+            flash(gettext('Cannot remove project creator'), 'error')
+        elif user.id not in project.owners_ids:
+            flash(gettext('User is not a project owner'), 'error')
+        else:
+            project.owners_ids.remove(user.id)
+            project_repo.update(project)
+            flash(gettext('User was deleted from the list of owners'),
+                  'success')
+        return redirect_content_type(url_for('.coowners', short_name=short_name))
+    return abort(404)
+
+
+@blueprint.route('/<short_name>/projectreport/export')
+@login_required
+def export_project_report(short_name):
+    """Export individual project information in the given format"""
+
+    project, owner, ps = project_by_shortname(short_name)
+    if not current_user.admin and not current_user.id in project.owners_ids:
+        return abort(403)
+
+    project_report_csv_exporter = ProjectReportCsvExporter()
+
+    def respond():
+        project, owner, ps = project_by_shortname(short_name)
+        title = project_title(project, "Settings")
+        pro = pro_features()
+        project = add_custom_contrib_button_to(project, get_user_id_or_ip(), ps=ps)
+        owner_serialized = cached_users.get_user_summary(owner.name)
+        response = dict(template='/projects/settings.html',
+                        project=project,
+                        owner=owner_serialized,
+                        n_tasks=ps.n_tasks,
+                        overall_progress=ps.overall_progress,
+                        n_task_runs=ps.n_task_runs,
+                        last_activity=ps.last_activity,
+                        n_completed_tasks=ps.n_completed_tasks,
+                        n_volunteers=ps.n_volunteers,
+                        title=title,
+                        pro_features=pro)
+        return handle_content_type(response)
+
+
+    def respond_csv(ty):
+        if ty not in ('project',):
+            return abort(404)
+
+        try:
+            res = project_report_csv_exporter.response_zip(project, ty)
+            return res
+        except Exception as e:
+            current_app.logger.exception(
+                    u'CSV Export Failed - Project: {0}, Type: {1} - Error: {2}'
+                    .format(project.short_name, ty, e))
+            flash(gettext('Error generating project report.'), 'error')
+        return abort(500)
+
+    export_formats = ['csv']
+    ty = request.args.get('type')
+    fmt = request.args.get('format')
+
+    if not (fmt and ty):
+        if len(request.args) >= 1:
+            return abort(404)
+        return respond()
+
+    if fmt not in export_formats:
+        abort(415)
+
+    if ty == 'project':
+        project = project_repo.get(project.id)
+        if project:
+            ensure_authorized_to('read', project)
+
+    return {'csv': respond_csv}[fmt](ty)

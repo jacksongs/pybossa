@@ -72,11 +72,11 @@ class Uploader(object):
             from io import BytesIO
             m = BytesIO()
             im = Image.open(file)
-            target = im.crop(coordinates)
-            # target = target.resize(self.size, Image.ANTIALIAS)
-            # Scale down the image to Indexed mode
-            scale_down_img = target.convert('P', colors=255, palette=Image.ADAPTIVE)
-            scale_down_img.save(m, format=extension)
+            if coordinates != (0, 0, 0, 0):
+                target = im.crop(coordinates)
+            else:
+                target = im
+            target.save(m, format=extension)
             file.stream = m
             file.stream.seek(0)
             return True

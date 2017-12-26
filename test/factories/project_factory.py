@@ -38,6 +38,7 @@ class ProjectFactory(BaseFactory):
     featured = False
     published = True
     webhook = None
+    zip_download = True
     owner = factory.SubFactory('factories.UserFactory')
     owner_id = factory.LazyAttribute(lambda project: project.owner.id)
     category = factory.SubFactory('factories.CategoryFactory')
@@ -49,3 +50,4 @@ class ProjectFactory(BaseFactory):
             'onesignal': {'data': 'private'},
             'onesignal_app_id': 1
             }
+    owners_ids = factory.LazyAttribute(lambda project: [project.owner.id])

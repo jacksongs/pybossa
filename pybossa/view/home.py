@@ -27,7 +27,6 @@ from pybossa.cache import categories as cached_cat
 from pybossa.util import rank, handle_content_type
 from jinja2.exceptions import TemplateNotFound
 
-from pybossa.cache import site_stats
 
 blueprint = Blueprint('home', __name__)
 
@@ -36,48 +35,15 @@ blueprint = Blueprint('home', __name__)
 def home():
     """Render home page with the cached projects and users."""
     page = 1
-    per_page = current_app.config.get('APPS_PER_PAGE')
-    if per_page is None:  # pragma: no cover
-        per_page = 5
-    d = {'top_projects': cached_projects.get_top(),
-         'top_users': None}
-
-    # Get all the categories with projects
-    categories = cached_cat.get_used()
-    d['categories'] = categories
-    d['categories_projects'] = {}
-    for c in categories:
-        tmp_projects = cached_projects.get(c['short_name'], page, per_page)
-        d['categories_projects'][c['short_name']] = rank(tmp_projects)
+    per_page = current_app.config.get('APPS_PER_PAGE', 5)
 
     # Add featured
     tmp_projects = cached_projects.get_featured('featured', page, per_page)
     if len(tmp_projects) > 0:
-        featured = Category(name='Featured', short_name='featured')
-        d['categories'].insert(0, featured)
-        d['categories_projects']['featured'] = rank(tmp_projects)
-
-    # Add global stats
-
-    try:
-        d['n_tasks'] = site_stats.n_tasks_site()*2
-        d['n_task_runs'] = site_stats.n_task_runs_site()
-        d['progress'] = int(round(float(site_stats.n_task_runs_site())/(site_stats.n_tasks_site()*3),2)*100)
-        d['progress_current'] = int(round(float(site_stats.n_task_runs_site())/3/2000,2)*100)
-    except:
-        d['n_tasks'] = 0
-        d['n_task_runs'] = 0
-        d['progress'] = 0
-        d['progress_current'] = 0
-
-
-    if (current_app.config['ENFORCE_PRIVACY']
-            and current_user.is_authenticated()):
-        if current_user.admin:
-            d['top_users'] = cached_users.get_leaderboard(10)
-    if not current_app.config['ENFORCE_PRIVACY']:
-        d['top_users'] = cached_users.get_leaderboard(10)
-    response = dict(template='/home/index.html', **d)
+        data = dict(featured=rank(tmp_projects))
+    else:
+        data = dict(featured=[])
+    response = dict(template='/home/index.html', **data)
     return handle_content_type(response)
 
 
