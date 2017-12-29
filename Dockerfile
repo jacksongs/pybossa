@@ -33,6 +33,8 @@ RUN set -x && \
     adduser -D -G pybossa -s /bin/sh -h /usr/src/app/pybossa pybossa && \
     passwd -u pybossa
 
+# I got this error: ImportError: C extension: umpy.core.multiarray failed to import not built.
+# it required a numpy/pandas uninstall/install
 RUN set -x && \
     pip uninstall -y numpy && \
     pip uninstall -y pandas && \
