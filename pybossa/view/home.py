@@ -26,6 +26,7 @@ from pybossa.cache import users as cached_users
 from pybossa.cache import categories as cached_cat
 from pybossa.util import rank, handle_content_type
 from jinja2.exceptions import TemplateNotFound
+from flask.ext.login import login_required
 
 
 blueprint = Blueprint('home', __name__)
@@ -55,6 +56,7 @@ def about():
 
 
 @blueprint.route("search")
+@login_required
 def search():
     """Render search results page."""
     response = dict(template="/home/search.html")
