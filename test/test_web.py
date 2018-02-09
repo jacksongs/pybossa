@@ -4374,6 +4374,103 @@ class TestWeb(web.Helper):
         assert exported_task_runs == [], exported_task_runs
 
     @with_context
+    def test_export_result_csv_with_no_keys(self):
+        """Test WEB export Results to CSV with no keys works"""
+        # First test for a non-existant project
+        uri = '/project/somethingnotexists/tasks/export'
+        res = self.app.get(uri, follow_redirects=True)
+        assert res.status == '404 NOT FOUND', res.status
+        # Now get the tasks in CSV format
+        uri = "/project/somethingnotexists/tasks/export?type=result&format=csv"
+        res = self.app.get(uri, follow_redirects=True)
+        assert res.status == '404 NOT FOUND', res.status
+        # Now get the wrong table name in CSV format
+        uri = "/project/%s/tasks/export?type=wrong&format=csv" % Fixtures.project_short_name
+        res = self.app.get(uri, follow_redirects=True)
+        assert res.status == '404 NOT FOUND', res.status
+
+        # Now with a real project
+        project = ProjectFactory.create()
+        self.clear_temp_container(project.owner_id)
+        tasks = TaskFactory.create_batch(5, project=project,
+                                         n_answers=1)
+        for task in tasks:
+            TaskRunFactory.create(project=project,
+                                  info=[["2001", "1000"], [None, None]],
+                                  task=task)
+
+        # Get results and update them
+        results = result_repo.filter_by(project_id=project.id)
+        for result in results:
+            result.info = [["2001", "1000"], [None, None]]
+            result_repo.update(result)
+
+        uri = '/project/%s/tasks/export' % project.short_name
+        res = self.app.get(uri, follow_redirects=True)
+        heading = "Export All Tasks and Task Runs"
+        data = res.data.decode('utf-8')
+        assert heading in data, "Export page should be available\n %s" % data
+        # Now get the tasks in CSV format
+        uri = "/project/%s/tasks/export?type=result&format=csv" % project.short_name
+        res = self.app.get(uri, follow_redirects=True)
+        zip = zipfile.ZipFile(StringIO(res.data))
+        # Check only one file in zipfile
+        err_msg = "filename count in ZIP is not 2"
+        assert len(zip.namelist()) == 2, err_msg
+        # Check ZIP filename
+        extracted_filename = zip.namelist()[0]
+        assert extracted_filename == 'project1_result.csv', zip.namelist()[0]
+
+        csv_content = StringIO(zip.read(extracted_filename))
+        csvreader = unicode_csv_reader(csv_content)
+        project = db.session.query(Project)\
+                    .filter_by(short_name=project.short_name)\
+                    .first()
+        exported_results = []
+        n = 0
+        for row in csvreader:
+            if n != 0:
+                exported_results.append(row)
+            else:
+                keys = row
+            n = n + 1
+        err_msg = "The number of exported results is different from Project Results"
+        assert len(exported_results) == len(project.tasks), err_msg
+        results = db.session.query(Result)\
+                    .filter_by(project_id=project.id).all()
+        for t in results:
+            err_msg = "All the result column names should be included"
+            d = t.dictize()
+            task_run_ids = d['task_run_ids']
+            fl = flatten(t.dictize(), root_keys_to_ignore='task_run_ids')
+            fl['task_run_ids'] = task_run_ids
+            for tk in fl.keys():
+                expected_key = "%s" % tk
+                assert expected_key in keys, (err_msg, expected_key, keys)
+            err_msg = "All the result.info column names should be included"
+            assert type(t.info) == list
+
+        for et in exported_results:
+            result_id = et[keys.index('id')]
+            result = db.session.query(Result).get(result_id)
+            result_dict = result.dictize()
+            task_run_ids = result_dict['task_run_ids']
+            result_dict_flat = flatten(result_dict,
+                                       root_keys_to_ignore='task_run_ids')
+            result_dict_flat['task_run_ids'] = task_run_ids
+            for k in result_dict_flat.keys():
+                slug = '%s' % k
+                err_msg = "%s != %s" % (result_dict_flat[k],
+                                        et[keys.index(slug)])
+                if result_dict_flat[k] is not None:
+                    assert unicode(result_dict_flat[k]) == et[keys.index(slug)], err_msg
+                else:
+                    assert u'' == et[keys.index(slug)], err_msg
+        # Tasks are exported as an attached file
+        content_disposition = 'attachment; filename=%d_project1_result_csv.zip' % project.id
+        assert res.headers.get('Content-Disposition') == content_disposition, res.headers
+
+    @with_context
     def test_export_result_csv(self):
         """Test WEB export Results to CSV works"""
         # First test for a non-existant project
@@ -4574,6 +4671,165 @@ class TestWeb(web.Helper):
             # Tasks are exported as an attached file
             content_disposition = 'attachment; filename=%d_project1_task_csv.zip' % project.id
             assert res.headers.get('Content-Disposition') == content_disposition, res.headers
+
+    @with_context
+    def test_export_task_csv_new_root_key(self):
+        """Test WEB export Tasks to CSV new root key works"""
+        # Fixtures.create()
+        # First test for a non-existant project
+        with patch.dict(self.flask_app.config, {'TASK_CSV_EXPORT_INFO_KEY':'answer'}):
+            uri = '/project/somethingnotexists/tasks/export'
+            res = self.app.get(uri, follow_redirects=True)
+            assert res.status == '404 NOT FOUND', res.status
+            # Now get the tasks in CSV format
+            uri = "/project/somethingnotexists/tasks/export?type=task&format=csv"
+            res = self.app.get(uri, follow_redirects=True)
+            assert res.status == '404 NOT FOUND', res.status
+            # Now get the wrong table name in CSV format
+            uri = "/project/%s/tasks/export?type=wrong&format=csv" % Fixtures.project_short_name
+            res = self.app.get(uri, follow_redirects=True)
+            assert res.status == '404 NOT FOUND', res.status
+
+            # Now with a real project
+            project = ProjectFactory.create()
+            self.clear_temp_container(project.owner_id)
+            for i in range(0, 5):
+                task = TaskFactory.create(project=project,
+                                          info={u'answer':[{u'eñe': i}]})
+            uri = '/project/%s/tasks/export' % project.short_name
+
+            res = self.app.get(uri, follow_redirects=True)
+            heading = "Export All Tasks and Task Runs"
+            data = res.data.decode('utf-8')
+            assert heading in data, "Export page should be available\n %s" % data
+            # Now get the tasks in CSV format
+            uri = "/project/%s/tasks/export?type=task&format=csv" % project.short_name
+            res = self.app.get(uri, follow_redirects=True)
+            file_name = '/tmp/task_%s.zip' % project.short_name
+            with open(file_name, 'w') as f:
+                f.write(res.data)
+            zip = zipfile.ZipFile(file_name, 'r')
+            zip.extractall('/tmp')
+            # Check only one file in zipfile
+            err_msg = "filename count in ZIP is not 2"
+            assert len(zip.namelist()) == 2, err_msg
+            # Check ZIP filename
+            extracted_filename = zip.namelist()[1]
+            assert extracted_filename == 'project1_task_info_only.csv', zip.namelist()[1]
+
+            csv_content = codecs.open('/tmp/' + extracted_filename, 'r', 'utf-8')
+
+            csvreader = unicode_csv_reader(csv_content)
+            project = db.session.query(Project)\
+                        .filter_by(short_name=project.short_name)\
+                        .first()
+            exported_tasks = []
+            n = 0
+            for row in csvreader:
+                if n != 0:
+                    exported_tasks.append(row)
+                else:
+                    keys = row
+                n = n + 1
+            err_msg = "The number of exported tasks is different from Project Tasks"
+            assert len(exported_tasks) == len(project.tasks), (err_msg,
+                                                               len(exported_tasks),
+                                                               len(project.tasks))
+            for t in project.tasks:
+                err_msg = "All the task column names should be included"
+                for tk in flatten(t.info['answer'][0]).keys():
+                    expected_key = "%s" % tk
+                    assert expected_key in keys, (expected_key, err_msg)
+
+            for et in exported_tasks:
+                task_id = et[keys.index('task_id')]
+                task = db.session.query(Task).get(task_id)
+                task_dict_flat = flatten(task.info['answer'][0])
+                task_dict = task.dictize()
+                for k in task_dict_flat.keys():
+                    slug = '%s' % k
+                    err_msg = "%s != %s" % (task_dict_flat[k], et[keys.index(slug)])
+                    if task_dict_flat[k] is not None:
+                        assert unicode(task_dict_flat[k]) == et[keys.index(slug)], err_msg
+                    else:
+                        assert u'' == et[keys.index(slug)], err_msg
+                for datum in task_dict['info']['answer']:
+                    for k in datum.keys():
+                        slug = '%s' % k
+                        assert unicode(task_dict_flat[slug]) == et[keys.index(slug)], err_msg
+            # Tasks are exported as an attached file
+            content_disposition = 'attachment; filename=%d_project1_task_csv.zip' % project.id
+            assert res.headers.get('Content-Disposition') == content_disposition, res.headers
+
+
+    @with_context
+    def test_export_task_csv_new_root_key_without_keys(self):
+        """Test WEB export Tasks to CSV new root key without keys works"""
+        # Fixtures.create()
+        # First test for a non-existant project
+        with patch.dict(self.flask_app.config, {'TASK_CSV_EXPORT_INFO_KEY':'answer'}):
+            uri = '/project/somethingnotexists/tasks/export'
+            res = self.app.get(uri, follow_redirects=True)
+            assert res.status == '404 NOT FOUND', res.status
+            # Now get the tasks in CSV format
+            uri = "/project/somethingnotexists/tasks/export?type=task&format=csv"
+            res = self.app.get(uri, follow_redirects=True)
+            assert res.status == '404 NOT FOUND', res.status
+            # Now get the wrong table name in CSV format
+            uri = "/project/%s/tasks/export?type=wrong&format=csv" % Fixtures.project_short_name
+            res = self.app.get(uri, follow_redirects=True)
+            assert res.status == '404 NOT FOUND', res.status
+
+            # Now with a real project
+            project = ProjectFactory.create()
+            self.clear_temp_container(project.owner_id)
+            for i in range(0, 5):
+                task = TaskFactory.create(project=project,
+                                          info=[[1,2]])
+            uri = '/project/%s/tasks/export' % project.short_name
+
+            res = self.app.get(uri, follow_redirects=True)
+            heading = "Export All Tasks and Task Runs"
+            data = res.data.decode('utf-8')
+            assert heading in data, "Export page should be available\n %s" % data
+            # Now get the tasks in CSV format
+            uri = "/project/%s/tasks/export?type=task&format=csv" % project.short_name
+            res = self.app.get(uri, follow_redirects=True)
+            file_name = '/tmp/task_%s.zip' % project.short_name
+            with open(file_name, 'w') as f:
+                f.write(res.data)
+            zip = zipfile.ZipFile(file_name, 'r')
+            zip.extractall('/tmp')
+            # Check only one file in zipfile
+            err_msg = "filename count in ZIP is not 2"
+            assert len(zip.namelist()) == 2, err_msg
+            # Check ZIP filename
+            extracted_filename = zip.namelist()[1]
+            assert extracted_filename == 'project1_task_info_only.csv', zip.namelist()[1]
+
+            csv_content = codecs.open('/tmp/' + extracted_filename, 'r', 'utf-8')
+
+            csvreader = unicode_csv_reader(csv_content)
+            project = db.session.query(Project)\
+                        .filter_by(short_name=project.short_name)\
+                        .first()
+            exported_tasks = []
+            n = 0
+            for row in csvreader:
+                if n != 0:
+                    exported_tasks.append(row)
+                else:
+                    keys = row
+                n = n + 1
+            err_msg = "The number of exported tasks should be 0 as there are no keys"
+            assert len(exported_tasks) == 0, (err_msg,
+                                              len(exported_tasks),
+                                              0)
+            # Tasks are exported as an attached file
+            content_disposition = 'attachment; filename=%d_project1_task_csv.zip' % project.id
+            assert res.headers.get('Content-Disposition') == content_disposition, res.headers
+
+
 
     @with_context
     def test_export_task_csv_new_root_key(self):
@@ -5478,7 +5734,8 @@ class TestWeb(web.Helper):
                                        'formtype': 'csv', 'form_name': 'csv'},
                             follow_redirects=True)
         project = db.session.query(Project).first()
-        assert len(project.tasks) == 2, "There should be only 2 tasks"
+        err_msg = "There should be only 2 tasks"
+        assert len(project.tasks) == 2, (err_msg, project.tasks)
         n = 0
         csv_tasks = [{u'Foo': u'1', u'Bar': u'2'}, {u'Foo': u'4', u'Bar': u'5'}]
         for t in project.tasks:
@@ -7046,6 +7303,17 @@ class TestWeb(web.Helper):
         assert mock_rank.call_args_list[2][0][2] == desc
 
     @with_context
+    @patch('pybossa.view.projects.rank', autospec=True)
+    def test_project_index_historical_contributions(self, mock_rank):
+        self.create()
+        user = user_repo.get(2)
+        url = 'project/category/historical_contributions?api_key={}'.format(user.api_key)
+        with patch.dict(self.flask_app.config, {'HISTORICAL_CONTRIBUTIONS_AS_CATEGORY': True}):
+            res = self.app.get(url, follow_redirects=True)
+            assert '<h1>Historical Contributions Projects</h1>' in res.data
+            assert not mock_rank.called
+
+    @with_context
     def test_export_task_zip_download_anon(self):
         """Test export task with zip download disabled for anon."""
         project = ProjectFactory.create(zip_download=False)
@@ -7124,3 +7392,40 @@ class TestWeb(web.Helper):
                                                        admin.api_key)
         res = self.app.get(url, follow_redirects=True)
         assert res.status_code == 200, res.status_code
+
+    @with_context
+    def test_projects_account(self):
+        """Test projecs on profiles are good."""
+        owner, contributor = UserFactory.create_batch(2)
+        info = dict(passwd_hash='foo', foo='bar')
+        project = ProjectFactory.create(owner=owner, info=info)
+        TaskRunFactory.create(project=project, user=contributor)
+
+        url = '/account/%s/' % contributor.name
+        res = self.app_get_json(url)
+        data = json.loads(res.data)
+        assert 'projects' in data.keys(), data.keys()
+        assert len(data['projects']) == 1, len(data['projects'])
+        tmp = data['projects'][0]
+        for key in info.keys():
+            assert key not in tmp['info'].keys()
+
+        url = '/account/%s/' % owner.name
+        res = self.app_get_json(url)
+        data = json.loads(res.data)
+        assert len(data['projects']) == 0, len(data['projects'])
+        assert 'projects_created' in data.keys(), data.keys()
+        assert len(data['projects_created']) == 1, len(data['projects_created'])
+        tmp = data['projects_created'][0]
+        for key in info.keys():
+            assert key not in tmp['info'].keys()
+
+        url = '/account/%s/?api_key=%s' % (owner.name,
+                                           owner.api_key)
+        res = self.app_get_json(url)
+        data = json.loads(res.data)
+        assert 'projects_published' in data.keys(), data.keys()
+        assert len(data['projects_published']) == 1, len(data['projects_published'])
+        tmp = data['projects_published'][0]
+        for key in info.keys():
+            assert key in tmp['info'].keys()
