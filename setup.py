@@ -63,7 +63,9 @@ requirements = [
     "pycountry",
     "wtforms-components>=0.10.3, <0.10.4",
     "yacryptopan",
-    "Faker"
+    "Faker",
+    "uwsgi",
+    "dicttoxml>=1.7.0, <2" # for the data plugin
 ]
 
 setup(
