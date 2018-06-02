@@ -42,7 +42,7 @@ def get_leaderboard(n, user_id=None, window=0, info=None):
 
 
 @memoize(timeout=timeouts.get('USER_TIMEOUT'))
-def get_user_summary(name):
+def get_user_summary(name, current_user=None):
     """Return user summary."""
     sql = text('''
                SELECT "user".id, "user".name, "user".fullname, "user".created,
@@ -50,7 +50,8 @@ def get_user_summary(name):
                "user".google_user_id, "user".info, "user".admin,
                "user".locale,
                "user".email_addr, COUNT(task_run.user_id) AS n_answers,
-               "user".valid_email, "user".confirmation_email_sent
+               "user".valid_email, "user".confirmation_email_sent, 
+               "user".restrict
                FROM "user"
                LEFT OUTER JOIN task_run ON "user".id=task_run.user_id
                WHERE "user".name=:name
@@ -69,13 +70,22 @@ def get_user_summary(name):
                     email_addr=row.email_addr, n_answers=row.n_answers,
                     valid_email=row.valid_email,
                     confirmation_email_sent=row.confirmation_email_sent,
+                    restrict=row.restrict,
                     registered_ago=pretty_date(row.created))
     if user:
         rank_score = rank_and_score(user['id'])
         user['rank'] = rank_score['rank']
         user['score'] = rank_score['score']
         user['total'] = get_total_users()
-        return user
+        if user['restrict']:
+            if (current_user and
+                current_user.is_authenticated() and
+               (current_user.id == user['id'])):
+                return user
+            else:
+                return None
+        else:
+            return user
     else:  # pragma: no cover
         return None
 
@@ -120,7 +130,7 @@ def projects_contributed(user_id, order_by='name'):
         project = dict(row)
         project['n_tasks'] = n_tasks(row.id)
         project['n_volunteers'] = n_volunteers(row.id)
-        project['overall_progress'] = overall_progress(row.id),
+        project['overall_progress'] = overall_progress(row.id)
         projects_contributed.append(project)
     return projects_contributed
 
@@ -163,7 +173,7 @@ def published_projects(user_id):
         project = dict(row)
         project['n_tasks'] = n_tasks(row.id)
         project['n_volunteers'] = n_volunteers(row.id)
-        project['overall_progress'] = overall_progress(row.id),
+        project['overall_progress'] = overall_progress(row.id)
         projects_published.append(project)
     return projects_published
 
@@ -206,7 +216,7 @@ def draft_projects(user_id):
         project = dict(row)
         project['n_tasks'] = n_tasks(row.id)
         project['n_volunteers'] = n_volunteers(row.id)
-        project['overall_progress'] = overall_progress(row.id),
+        project['overall_progress'] = overall_progress(row.id)
         projects_draft.append(project)
     return projects_draft
 
@@ -249,14 +259,17 @@ def get_users_page(page, per_page=24):
         accounts.append(tmp)
     return accounts
 
+
 def delete_user_summary_id(oid):
     """Delete from cache the user summary."""
     user = db.session.query(User).get(oid)
     delete_memoized(get_user_summary, user.name)
 
+
 def delete_user_summary(name):
     """Delete from cache the user summary."""
     delete_memoized(get_user_summary, name)
+
 
 @memoize(timeout=timeouts.get('APP_TIMEOUT'))
 def get_project_report_userdata(project_id):
@@ -286,3 +299,20 @@ def get_project_report_userdata(project_id):
          round(row.avg_time_per_task.total_seconds() / 60, 2)]
          for row in results]
     return users_report
+
+
+@memoize(timeout=timeouts.get('APP_TIMEOUT'))
+def get_user_pref_metadata(name):
+    sql = text("""
+    SELECT info->'metadata', user_pref FROM public.user WHERE name=:name;
+    """)
+
+    cursor = session.execute(sql, dict(name=name))
+    row = cursor.fetchone()
+    upref_mdata = row[0] or {}
+    upref_mdata.update(row[1] or {})
+    return upref_mdata
+
+
+def delete_user_pref_metadata(name):
+    delete_memoized(get_user_pref_metadata, name)

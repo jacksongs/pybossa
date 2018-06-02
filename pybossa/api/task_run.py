@@ -30,7 +30,7 @@ from werkzeug.exceptions import Forbidden, BadRequest
 
 from api_base import APIBase
 from pybossa.util import get_user_id_or_ip
-from pybossa.core import task_repo, sentinel
+from pybossa.core import task_repo, sentinel, anonymizer
 from pybossa.contributions_guard import ContributionsGuard
 from pybossa.auth import jwt_authorize_project
 
@@ -51,7 +51,6 @@ class TaskRunAPI(APIBase):
         self._ensure_task_was_requested(task, guard)
         self._add_user_info(taskrun)
         self._add_created_timestamp(taskrun, task, guard)
-
 
     def _forbidden_attributes(self, data):
         for key in data.keys():
@@ -75,12 +74,15 @@ class TaskRunAPI(APIBase):
             raise Forbidden('You must request a task first!')
 
     def _add_user_info(self, taskrun):
-        if current_user.is_anonymous():
-            taskrun.user_ip = request.remote_addr
-            if taskrun.user_ip is None:
-                taskrun.user_ip = '127.0.0.1'
+        if taskrun.external_uid is None:
+            if current_user.is_anonymous():
+                taskrun.user_ip = anonymizer.ip(request.remote_addr or
+                                                '127.0.0.1')
+            else:
+                taskrun.user_id = current_user.id
         else:
-            taskrun.user_id = current_user.id
+            taskrun.user_ip = None
+            taskrun.user_id = None
 
     def _add_created_timestamp(self, taskrun, task, guard):
         taskrun.created = guard.retrieve_timestamp(task, get_user_id_or_ip())

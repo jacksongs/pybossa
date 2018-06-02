@@ -41,6 +41,9 @@ coverage.xml
 htmlcov/*
 pybossa/themes/*
 .vscode/
+env3/
+*.bak
+*.orig
 tags
 
 pybossa/themes/default
@@ -52,3 +55,5 @@ pybossa/plugins/pybossa_discourse/DISABLED
 pybossa/themes/default
 
 doc/.DS_Store
+pybossa/themes/default
+setup.py

@@ -63,6 +63,7 @@ def add_blog_event(mapper, conn, target):
     update_feed(obj)
     # Notify volunteers
     if current_app.config.get('DISABLE_EMAIL_NOTIFICATIONS') is None:
+        scheme = current_app.config.get('PREFERRED_URL_SCHEME', 'http')
         mail_queue.enqueue(notify_blog_users,
                            blog_id=target.id,
                            project_id=target.project_id)
@@ -71,7 +72,9 @@ def add_blog_event(mapper, conn, target):
         launch_url = url_for('project.show_blogpost',
                              short_name=tmp['short_name'],
                              id=target.id,
+                             _scheme=scheme,
                              _external=True)
+        print launch_url
         web_buttons = [{"id": "read-more-button",
                         "text": "Read more",
                         "icon": "http://i.imgur.com/MIxJp1L.png",
@@ -133,8 +136,9 @@ def add_user_event(mapper, conn, target):
 def add_user_contributed_to_feed(conn, user_id, project_obj):
     if user_id is not None:
         sql_query = ('select fullname, name, info from "user" \
-                     where id=%s') % user_id
+                     where id=%s and restrict=false') % user_id
         results = conn.execute(sql_query)
+        tmp = None
         for r in results:
             tmp = dict(id=user_id,
                        name=r.name,
@@ -144,7 +148,8 @@ def add_user_contributed_to_feed(conn, user_id, project_obj):
             tmp['project_name'] = project_obj['name']
             tmp['project_short_name'] = project_obj['short_name']
             tmp['action_updated'] = 'UserContribution'
-        update_feed(tmp)
+        if tmp:
+            update_feed(tmp)
 
 
 def is_task_completed(conn, task_id, project_id):
@@ -266,7 +271,7 @@ def update_timestamp(mapper, conn, target):
 
 @event.listens_for(User, 'before_insert')
 def make_admin(mapper, conn, target):
-    users = conn.scalar('select count(*) from "user"')
+    users = conn.scalar('select count(*) from "user" where restrict=false')
     if users == 0:
         target.admin = True
 

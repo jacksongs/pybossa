@@ -269,16 +269,11 @@ class TestWeb(web.Helper):
         assert announcement0['id'] == 1
 
     @with_context
-    @patch('pybossa.cache.project_stats.pygeoip', autospec=True)
-    def test_project_stats(self, mock1):
+    def test_project_stats(self):
         """Test WEB project stats page works"""
         res = self.register()
         res = self.signin()
         res = self.new_project(short_name="igil")
-        returns = [Mock()]
-        returns[0].GeoIP.return_value = 'gic'
-        returns[0].GeoIP.record_by_addr.return_value = {}
-        mock1.side_effects = returns
 
         project = db.session.query(Project).first()
         user = db.session.query(User).first()
@@ -307,23 +302,12 @@ class TestWeb(web.Helper):
         assert res.status_code == 200, res.status_code
         assert "Distribution" in res.data, res.data
 
-        with patch.dict(self.flask_app.config, {'GEO': True}):
-            url = '/project/%s/stats' % project.short_name
-            res = self.app.get(url)
-            assert_raises(ValueError, json.loads, res.data)
-            assert "GeoLite" in res.data, res.data
-
     @with_context
-    @patch('pybossa.cache.project_stats.pygeoip', autospec=True)
-    def test_project_stats_json(self, mock1):
+    def test_project_stats_json(self):
         """Test WEB project stats page works JSON"""
         res = self.register()
         res = self.signin()
         res = self.new_project(short_name="igil")
-        returns = [Mock()]
-        returns[0].GeoIP.return_value = 'gic'
-        returns[0].GeoIP.record_by_addr.return_value = {}
-        mock1.side_effects = returns
 
         project = db.session.query(Project).first()
         user = db.session.query(User).first()
@@ -385,28 +369,27 @@ class TestWeb(web.Helper):
         assert 'secret_key' in data['project'], err_msg
         assert res.status_code == 200, res.status_code
 
-        with patch.dict(self.flask_app.config, {'GEO': True}):
-            url = '/project/%s/stats' % project.short_name
-            res = self.app_get_json(url)
-            data = json.loads(res.data)
-            err_msg = 'Field missing in JSON response'
-            assert 'avg_contrib_time' in data, err_msg
-            assert 'n_completed_tasks' in data, err_msg
-            assert 'n_tasks' in data, err_msg
-            assert 'n_volunteers' in data, err_msg
-            assert 'overall_progress' in data, err_msg
-            assert 'owner' in data, err_msg
-            assert 'pro_features' in data, err_msg
-            assert 'project' in data, err_msg
-            assert 'projectStats' in data, err_msg
-            assert 'userStats' in data, err_msg
-            err_msg = 'Field should not be private'
-            assert 'id' in data['owner'], err_msg
-            assert 'api_key' in data['owner'], err_msg
-            assert 'secret_key' in data['project'], err_msg
-            assert res.status_code == 200, res.status_code
-            err_msg = 'no geo data'
-            assert data['userStats']['geo'] == True, err_msg
+        url = '/project/%s/stats' % project.short_name
+        res = self.app_get_json(url)
+        data = json.loads(res.data)
+        err_msg = 'Field missing in JSON response'
+        assert 'avg_contrib_time' in data, err_msg
+        assert 'n_completed_tasks' in data, err_msg
+        assert 'n_tasks' in data, err_msg
+        assert 'n_volunteers' in data, err_msg
+        assert 'overall_progress' in data, err_msg
+        assert 'owner' in data, err_msg
+        assert 'pro_features' in data, err_msg
+        assert 'project' in data, err_msg
+        assert 'projectStats' in data, err_msg
+        assert 'userStats' in data, err_msg
+        err_msg = 'Field should not be private'
+        assert 'id' in data['owner'], err_msg
+        assert 'api_key' in data['owner'], err_msg
+        assert 'secret_key' in data['project'], err_msg
+        assert res.status_code == 200, res.status_code
+        err_msg = 'there should not have geo data'
+        assert data['userStats'].get('geo') == None, err_msg
 
 
     @with_context
@@ -3540,6 +3523,90 @@ class TestWeb(web.Helper):
         assert msg in res.data
 
     @with_context
+    @patch('pybossa.view.account.super_queue.enqueue')
+    def test_delete_account(self, mock):
+        """Test WEB delete account works"""
+        from pybossa.jobs import delete_account
+        self.register()
+        res = self.app.get('/account/johndoe/delete')
+        assert res.status_code == 302, res.status_code
+        assert 'account/signout' in res.data
+        user = user_repo.filter_by(name='johndoe')[0]
+        mock.assert_called_with(delete_account, user.id)
+
+    @with_context
+    @patch('pybossa.view.account.super_queue.enqueue')
+    def test_delete_account_anon(self, mock):
+        """Test WEB delete account anon fails"""
+        from pybossa.jobs import delete_account
+        self.register()
+        self.signout()
+        res = self.app.get('/account/johndoe/delete')
+        assert res.status_code == 302, res.status_code
+        assert 'account/signin?next' in res.data
+
+    @with_context
+    @patch('pybossa.view.account.super_queue.enqueue')
+    def test_delete_account_json_anon(self, mock):
+        """Test WEB delete account json anon fails"""
+        from pybossa.jobs import delete_account
+        self.register()
+        self.signout()
+        res = self.app_get_json('/account/johndoe/delete')
+        assert res.status_code == 302, res.status_code
+        assert 'account/signin?next' in res.data
+
+    @with_context
+    @patch('pybossa.view.account.super_queue.enqueue')
+    def test_delete_account_other_user(self, mock):
+        """Test WEB delete account other user fails"""
+        from pybossa.jobs import delete_account
+        user = UserFactory.create(id=5000)
+        self.register()
+        res = self.app.get('/account/%s/delete' % user.name)
+        assert res.status_code == 403, res.status_code
+
+    @with_context
+    @patch('pybossa.view.account.super_queue.enqueue')
+    def test_delete_account_json_other_user(self, mock):
+        """Test WEB delete account json anon fails"""
+        from pybossa.jobs import delete_account
+        user = UserFactory.create(id=5001)
+        self.register()
+        res = self.app_get_json('/account/%s/delete' % user.name)
+        assert res.status_code == 403, (res.status_code, res.data)
+
+    @with_context
+    @patch('pybossa.view.account.super_queue.enqueue')
+    def test_delete_account_404_user(self, mock):
+        """Test WEB delete account user does not exists"""
+        from pybossa.jobs import delete_account
+        self.register()
+        res = self.app.get('/account/juan/delete')
+        assert res.status_code == 404, res.status_code
+
+    @with_context
+    @patch('pybossa.view.account.super_queue.enqueue')
+    def test_delete_account_json_404_user(self, mock):
+        """Test WEB delete account json user does not exist"""
+        from pybossa.jobs import delete_account
+        self.register()
+        res = self.app_get_json('/account/asdafsdlw/delete')
+        assert res.status_code == 404, (res.status_code, res.data)
+
+    @with_context
+    @patch('pybossa.view.account.super_queue.enqueue')
+    def test_delete_account_json(self, mock):
+        """Test WEB JSON delete account works"""
+        from pybossa.jobs import delete_account
+        self.register()
+        res = self.app_get_json('/account/johndoe/delete')
+        data = json.loads(res.data)
+        assert data['job'] == 'enqueued', data
+        user = user_repo.filter_by(name='johndoe')[0]
+        mock.assert_called_with(delete_account, user.id)
+
+    @with_context
     def test_42_password_link(self):
         """Test WEB visibility of password change link"""
         self.register()
@@ -4162,6 +4229,123 @@ class TestWeb(web.Helper):
         assert "User Message" not in res.data, error_msg
         error_msg = "There should not be an owner message"
         assert "Owner Message" not in res.data, error_msg
+
+    @with_context
+    def test_export_user_json(self):
+        """Test export user data in JSON."""
+        user = UserFactory.create()
+        from pybossa.core import json_exporter as e
+        e._make_zip(None, '', 'personal_data', user.dictize(), user.id,
+                    'personal_data.zip')
+
+        uri = "/uploads/user_%s/personal_data.zip" % user.id
+        res = self.app.get(uri, follow_redirects=True)
+        zip = zipfile.ZipFile(StringIO(res.data))
+        # Check only one file in zipfile
+        err_msg = "filename count in ZIP is not 1"
+        assert len(zip.namelist()) == 1, err_msg
+        # Check ZIP filename
+        extracted_filename = zip.namelist()[0]
+        expected_filename = 'personal_data_.json'
+        assert extracted_filename == expected_filename, (zip.namelist()[0],
+                                                         expected_filename)
+        exported_user = json.loads(zip.read(extracted_filename))
+        assert exported_user['id'] == user.id
+
+    @with_context
+    def test_export_user_link(self):
+        """Test WEB export user data link only for owner."""
+        root, user, other = UserFactory.create_batch(3)
+        uri = 'account/%s/export' % user.name
+        # As anon
+        res = self.app.get(uri)
+        assert res.status_code == 302
+
+        # As admin
+        res = self.app.get(uri + '?api_key=%s' % root.api_key,
+                           follow_redirects=True)
+        assert res.status_code == 403, res.status_code
+
+        # As other
+        res = self.app.get(uri + '?api_key=%s' % other.api_key,
+                           follow_redirects=True)
+        assert res.status_code == 403, res.status_code
+
+        # As owner
+        res = self.app.get(uri + '?api_key=%s' % user.api_key,
+                           follow_redirects=True)
+        assert res.status_code == 200, res.status_code
+
+        # As non existing user
+        uri = 'account/algo/export'
+        res = self.app.get(uri + '?api_key=%s' % user.api_key,
+                           follow_redirects=True)
+        assert res.status_code == 404, res.status_code
+
+
+    @with_context
+    def test_export_user_link_json(self):
+        """Test WEB export user data link only for owner as JSON."""
+        root, user, other = UserFactory.create_batch(3)
+        uri = 'account/%s/export' % user.name
+        # As anon
+        res = self.app_get_json(uri)
+        assert res.status_code == 302
+
+        # As admin
+        res = self.app_get_json(uri + '?api_key=%s' % root.api_key,
+                                follow_redirects=True)
+        assert res.status_code == 403, res.status_code
+
+        # As other
+        res = self.app_get_json(uri + '?api_key=%s' % other.api_key,
+                                follow_redirects=True)
+        assert res.status_code == 403, res.status_code
+
+        # As owner
+        res = self.app_get_json(uri + '?api_key=%s' % user.api_key,
+                                follow_redirects=True)
+        assert res.status_code == 200, res.status_code
+
+        # As non existing user
+        uri = 'account/algo/export'
+        res = self.app_get_json(uri + '?api_key=%s' % user.api_key,
+                                follow_redirects=True)
+        assert res.status_code == 404, res.status_code
+
+
+    @with_context
+    @patch('pybossa.exporter.uploader.delete_file')
+    @patch('pybossa.exporter.json_export.scheduler.enqueue_in')
+    @patch('pybossa.exporter.json_export.uuid.uuid1', return_value='random')
+    def test_export_user_json(self, m1, m2, m3):
+        """Test export user data in JSON."""
+        user = UserFactory.create(id=50423)
+        from pybossa.core import json_exporter as e
+        e._make_zip(None, '', 'personal_data', user.dictize(), user.id,
+                    'personal_data.zip')
+
+        uri = "/uploads/user_%s/random_sec_personal_data.zip" % user.id
+        print uri
+        res = self.app.get(uri, follow_redirects=True)
+        zip = zipfile.ZipFile(StringIO(res.data))
+        # Check only one file in zipfile
+        err_msg = "filename count in ZIP is not 1"
+        assert len(zip.namelist()) == 1, err_msg
+        # Check ZIP filename
+        extracted_filename = zip.namelist()[0]
+        expected_filename = 'personal_data_.json'
+        assert extracted_filename == expected_filename, (zip.namelist()[0],
+                                                         expected_filename)
+        exported_user = json.loads(zip.read(extracted_filename))
+        assert exported_user['id'] == user.id
+
+        container = 'user_%s' % user.id
+        import datetime
+        m2.assert_called_with(datetime.timedelta(3),
+                              m3,
+                              'random_sec_personal_data.zip',
+                              container)
 
     @with_context
     def test_export_result_json(self):
@@ -5424,8 +5608,9 @@ class TestWeb(web.Helper):
                      "projects/tasks/gdocs.html",
                      "projects/tasks/dropbox.html",
                      "projects/tasks/flickr.html",
-                     "projects/tasks/localCSV.html"]
-        assert data['available_importers'] == importers, data
+                     "projects/tasks/localCSV.html",
+                     "projects/tasks/iiif.html"]
+        assert sorted(data['available_importers']) == sorted(importers), data
 
         importers = ['&type=epicollect',
                      '&type=csv',
@@ -5435,7 +5620,8 @@ class TestWeb(web.Helper):
                      '&type=gdocs',
                      '&type=dropbox',
                      '&type=flickr',
-                     '&type=localCSV']
+                     '&type=localCSV',
+                     '&type=iiif']
 
         for importer in importers:
             res = self.app_get_json(url + importer)
@@ -5463,6 +5649,8 @@ class TestWeb(web.Helper):
                 assert 'album_id' in data['form'].keys(), data
             if 'localCSV' in importer:
                 assert 'form_name' in data['form'].keys(), data
+            if 'iiif' in importer:
+                assert 'manifest_uri' in data['form'].keys(), data
 
         for importer in importers:
             if 'epicollect' in importer:
@@ -5506,6 +5694,11 @@ class TestWeb(web.Helper):
                 res = self.app_post_json(url + importer, data=data)
                 data = json.loads(res.data)
                 assert data['flash'] == "SUCCESS", data
+            if 'iiif' in importer:
+                data = dict(manifest_uri='http://example.com')
+                res = self.app_post_json(url + importer, data=data)
+                data = json.loads(res.data)
+                assert data['flash'] == "SUCCESS", data
 
 
     @with_context
@@ -5528,8 +5721,10 @@ class TestWeb(web.Helper):
                      "projects/tasks/gdocs.html",
                      "projects/tasks/dropbox.html",
                      "projects/tasks/flickr.html",
-                     "projects/tasks/localCSV.html"]
-        assert data['available_importers'] == importers, data
+                     "projects/tasks/localCSV.html",
+                     "projects/tasks/iiif.html"]
+        assert sorted(data['available_importers']) == sorted(importers), (importers,
+                                                          data['available_importers'])
 
 
     @with_context
@@ -5618,6 +5813,14 @@ class TestWeb(web.Helper):
         data = res.data.decode('utf-8')
 
         assert "From an Amazon S3 bucket" in data
+        assert 'action="/project/%E2%9C%93project1/tasks/import"' in data
+
+        # IIIF
+        url = "/project/%s/tasks/import?type=iiif" % project.short_name
+        res = self.app.get(url, follow_redirects=True)
+        data = res.data.decode('utf-8')
+
+        assert "From a IIIF manifest" in data
         assert 'action="/project/%E2%9C%93project1/tasks/import"' in data
 
         # Invalid
@@ -6212,8 +6415,7 @@ class TestWeb(web.Helper):
 
 
     @with_context
-    @patch('pybossa.cache.site_stats.get_locs', return_value=[{'latitude': 0, 'longitude': 0}])
-    def test_58_global_stats(self, mock1):
+    def test_58_global_stats(self):
         """Test WEB global stats of the site works"""
         Fixtures.create()
 
@@ -6222,13 +6424,8 @@ class TestWeb(web.Helper):
         err_msg = "There should be a Global Statistics page of the project"
         assert "General Statistics" in res.data, err_msg
 
-        with patch.dict(self.flask_app.config, {'GEO': True}):
-            res = self.app.get(url, follow_redirects=True)
-            assert "GeoLite" in res.data, res.data
-
     @with_context
-    @patch('pybossa.cache.site_stats.get_locs', return_value=[{'latitude': 0, 'longitude': 0}])
-    def test_58_global_stats_json(self, mock1):
+    def test_58_global_stats_json(self):
         """Test WEB global stats JSON of the site works"""
         Fixtures.create()
 
@@ -6236,13 +6433,9 @@ class TestWeb(web.Helper):
         res = self.app_get_json(url)
         err_msg = "There should be a Global Statistics page of the project"
         data = json.loads(res.data)
-        keys = ['locs', 'projects', 'show_locs', 'stats', 'tasks', 'top5_projects_24_hours', 'top5_users_24_hours', 'users']
+        keys = ['projects', 'show_locs', 'stats', 'tasks', 'top5_projects_24_hours', 'top5_users_24_hours', 'users']
         assert keys.sort() == data.keys().sort(), keys
 
-
-        with patch.dict(self.flask_app.config, {'GEO': True}):
-            res = self.app.get(url, follow_redirects=True)
-            assert "GeoLite" in res.data, res.data
 
     @with_context
     def test_59_help_api(self):
@@ -6466,6 +6659,53 @@ class TestWeb(web.Helper):
         data = json.loads(res.data)
         assert data['next'] == '/account/signin'
         assert data['status'] == 'not_signed_in'
+
+    @with_context
+    def test_72_profile_url_json_restrict(self):
+        """Test JSON WEB public user profile restrict works"""
+
+        user = UserFactory.create(restrict=True)
+        admin = UserFactory.create(admin=True)
+        other = UserFactory.create()
+
+        url = '/account/profile?api_key=%s' % user.api_key
+
+        res = self.app.get(url,
+                           content_type='application/json')
+        assert res.status_code == 200, res.status_code
+        data = json.loads(res.data)
+        assert data.get('user') is not None, data
+        userDict = data.get('user')
+        assert userDict['id'] == user.id, userDict
+        assert userDict['restrict'] is True, userDict
+
+        # As admin should return nothing
+        url = '/account/%s/?api_key=%s' % (user.name, admin.api_key)
+
+        res = self.app.get(url,
+                           content_type='application/json')
+        assert res.status_code == 200, res.status_code
+        data = json.loads(res.data)
+        assert data.get('user') is None, data
+        assert data.get('title') == 'User data is restricted'
+        assert data.get('can_update') is False
+        assert data.get('projects_created') == []
+        assert data.get('projects') == [], data
+
+        # As another user should return nothing
+        url = '/account/%s/?api_key=%s' % (user.name, other.api_key)
+
+        res = self.app.get(url,
+                           content_type='application/json')
+        assert res.status_code == 200, res.status_code
+        data = json.loads(res.data)
+        assert data.get('user') is None, data
+        assert data.get('title') == 'User data is restricted'
+        assert data.get('can_update') is False
+        assert data.get('projects_created') == []
+        assert data.get('projects') == [], data
+
+
 
     @with_context
     @patch('pybossa.view.projects.uploader.upload_file', return_value=True)
@@ -7429,3 +7669,109 @@ class TestWeb(web.Helper):
         tmp = data['projects_published'][0]
         for key in info.keys():
             assert key in tmp['info'].keys()
+
+    @with_context
+    @patch('pybossa.view.account.mail_queue', autospec=True)
+    @patch('pybossa.view.account.render_template')
+    @patch('pybossa.view.account.signer')
+    def test_register_with_upref_mdata(self, signer, render, queue):
+        """Test WEB register user with user preferences set"""
+        from flask import current_app
+        import pybossa.core
+        current_app.config.upref_mdata = True
+
+        pybossa.core.upref_mdata_choices = dict(languages=[("en", "en"), ("sp", "sp")],
+                                    locations=[("us", "us"), ("uk", "uk")],
+                                    timezones=[("", ""), ("ACT", "Australia Central Time")],
+                                    user_types=[("Researcher", "Researcher"), ("Analyst", "Analyst")])
+
+        current_app.config['ACCOUNT_CONFIRMATION_DISABLED'] = True
+        data = dict(fullname="AJohn Doe", name="johndoe",
+                    password="p4ssw0rd", confirm="p4ssw0rd",
+                    email_addr="johndoe@example.com",
+                    consent=True, user_type="Analyst",
+                    languages="sp", locations="uk",
+                    timezone="")
+        signer.dumps.return_value = ''
+        render.return_value = ''
+        res = self.app.post('/account/register', data=data, follow_redirects=True)
+        assert res.status_code == 200, res.status_code
+        assert res.mimetype == 'text/html', res
+        user = user_repo.get_by(name='johndoe')
+        assert user.consent, user
+        assert user.name == 'johndoe', user
+        assert user.email_addr == 'johndoe@example.com', user
+        expected_upref = dict(languages=['sp'], locations=['uk'])
+
+        assert user.user_pref == expected_upref, "User preferences did not matched"
+
+        upref_data = dict(languages="en", locations="us",
+                        user_type="Researcher", timezone="ACT",
+                        work_hours_from="10:00", work_hours_to="17:00",
+                        review="user with research experience")
+        res = self.app.post('/account/save_metadata/johndoe',
+                data=upref_data, follow_redirects=True)
+        assert res.status_code == 200, res.status_code
+        user = user_repo.get_by(name='johndoe')
+        expected_upref = dict(languages=['en'], locations=['us'])
+        assert user.user_pref == expected_upref, "User preferences did not matched"
+
+        metadata = user.info['metadata']
+        timezone = metadata['timezone']
+        work_hours_from = metadata['work_hours_from']
+        work_hours_to = metadata['work_hours_to']
+        review = metadata['review']
+        assert metadata['timezone'] == upref_data['timezone'], "timezone not updated"
+        assert metadata['work_hours_from'] == upref_data['work_hours_from'], "work hours from not updated"
+        assert metadata['work_hours_to'] == upref_data['work_hours_to'], "work hours to not updated"
+        assert metadata['review'] == upref_data['review'], "review not updated"
+
+
+    @with_context
+    @patch('pybossa.view.account.current_user')
+    @patch('pybossa.view.account.mail_queue', autospec=True)
+    @patch('pybossa.view.account.render_template')
+    @patch('pybossa.view.account.signer')
+    def test_register_with_invalid_upref_mdata(self, signer, render, queue, current_user):
+        """Test WEB register user - invalid user preferences cannot be set"""
+        from flask import current_app
+        import pybossa.core
+        current_app.config.upref_mdata = True
+
+        pybossa.core.upref_mdata_choices = dict(languages=[("en", "en"), ("sp", "sp")],
+                                    locations=[("us", "us"), ("uk", "uk")],
+                                    timezones=[("", ""), ("ACT", "Australia Central Time")],
+                                    user_types=[("Researcher", "Researcher"), ("Analyst", "Analyst")])
+
+        current_app.config['ACCOUNT_CONFIRMATION_DISABLED'] = True
+        data = dict(fullname="AJohn Doe", name="johndoe",
+                    password="p4ssw0rd", confirm="p4ssw0rd",
+                    email_addr="johndoe@example.com",
+                    consent=True, user_type="Analyst",
+                    languages="sp", locations="uk",
+                    timezone="")
+        signer.dumps.return_value = ''
+        render.return_value = ''
+        res = self.app.post('/account/register', data=data, follow_redirects=True)
+        assert res.status_code == 200, res.status_code
+        assert res.mimetype == 'text/html', res
+        user = user_repo.get_by(name='johndoe')
+        assert user.consent, user
+        assert user.name == 'johndoe', user
+        assert user.email_addr == 'johndoe@example.com', user
+        expected_upref = dict(languages=['sp'], locations=['uk'])
+        assert user.user_pref == expected_upref, "User preferences did not matched"
+
+        # update invalid user preferences
+        current_user.admin = True
+        current_user.id = 999
+        upref_invalid_data = dict(languages="ch", locations="jp",
+            user_type="Researcher", timezone="ACT",
+            work_hours_from="10:00", work_hours_to="17:00",
+            review="user with research experience")
+        res = self.app.post('/account/save_metadata/johndoe',
+                data=upref_invalid_data, follow_redirects=True)
+        assert res.status_code == 200, res.status_code
+        user = user_repo.get_by(name='johndoe')
+        invalid_upref = dict(languages=['ch'], locations=['jp'])
+        assert user.user_pref != invalid_upref, "Invalid preferences should not be updated"

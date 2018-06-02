@@ -49,18 +49,21 @@ from pybossa.util import url_for_app_type
 from pybossa.util import fuzzyboolean
 from pybossa.cache import users as cached_users
 from pybossa.auth import ensure_authorized_to
-from pybossa.jobs import send_mail
+from pybossa.jobs import send_mail, export_userdata, delete_account
 from pybossa.core import user_repo, ldap
 from pybossa.feed import get_update_feed
 from pybossa.messages import *
 from pybossa import otp
 
 from pybossa.forms.account_view_forms import *
-
+from pybossa.forms.forms import UserPrefMetadataForm, RegisterFormWithUserPrefMetadata
+from werkzeug.datastructures import MultiDict
 
 blueprint = Blueprint('account', __name__)
 
 mail_queue = Queue('email', connection=sentinel.master)
+export_queue = Queue('high', connection=sentinel.master)
+super_queue = Queue('super', connection=sentinel.master)
 
 
 @blueprint.route('/')
@@ -301,14 +304,30 @@ def register():
     """
     if current_app.config.get('LDAP_HOST', False):
         return abort(404)
-    form = RegisterForm(request.body)
+    if not current_app.config.upref_mdata:
+        form = RegisterForm(request.body)
+    else:
+        form = RegisterFormWithUserPrefMetadata(request.body)
+        form.set_upref_mdata_choices()
+
     msg = "I accept receiving emails from %s" % current_app.config.get('BRAND')
     form.consent.label = msg
     if request.method == 'POST' and form.validate():
-        account = dict(fullname=form.fullname.data, name=form.name.data,
-                       email_addr=form.email_addr.data,
-                       password=form.password.data,
-                       consent=form.consent.data)
+        if current_app.config.upref_mdata:
+            user_pref, metadata = get_user_pref_and_metadata(form.name.data, form)
+            account = dict(fullname=form.fullname.data, name=form.name.data,
+                           email_addr=form.email_addr.data,
+                           password=form.password.data,
+                           consent=form.consent.data,
+                           user_type=form.user_type.data)
+            account['user_pref'] = user_pref
+            account['metadata'] = metadata
+        else:
+            account = dict(fullname=form.fullname.data, name=form.name.data,
+                           email_addr=form.email_addr.data,
+                           password=form.password.data,
+                           consent=form.consent.data)
+
         confirm_url = get_email_confirmation_url(account)
         if current_app.config.get('ACCOUNT_CONFIRMATION_DISABLED'):
             return _create_account(account)
@@ -383,6 +402,12 @@ def _create_account(user_data, ldap_disabled=True):
                                email_addr=user_data['email_addr'],
                                valid_email=True,
                                consent=user_data['consent'])
+
+    if user_data.get('user_pref'):
+        new_user.user_pref = user_data['user_pref']
+    if user_data.get('metadata'):
+        new_user.info = dict(metadata=user_data['metadata'])
+
     if ldap_disabled:
         new_user.set_password(user_data['password'])
     else:
@@ -408,7 +433,12 @@ def redirect_profile():
     if current_user.is_anonymous():  # pragma: no cover
         return redirect_content_type(url_for('.signin'), status='not_signed_in')
     if (request.headers.get('Content-Type') == 'application/json') and current_user.is_authenticated():
-        return _show_own_profile(current_user)
+        form = None
+        if current_app.config.upref_mdata:
+            form_data = cached_users.get_user_pref_metadata(current_user.name)
+            form = UserPrefMetadataForm(**form_data)
+            form.set_upref_mdata_choices()
+        return _show_own_profile(current_user, form, current_user)
     else:
         return redirect_content_type(url_for('.profile', name=current_user.name))
 
@@ -424,33 +454,54 @@ def profile(name):
     user = user_repo.get_by_name(name=name)
     if user is None:
         raise abort(404)
+
+    form = None
+    if current_app.config.upref_mdata:
+        form_data = cached_users.get_user_pref_metadata(user.name)
+        form = UserPrefMetadataForm(**form_data)
+        form.set_upref_mdata_choices()
+
     if current_user.is_anonymous() or (user.id != current_user.id):
-        return _show_public_profile(user)
+        return _show_public_profile(user, form)
     if current_user.is_authenticated() and user.id == current_user.id:
-        return _show_own_profile(user)
+        return _show_own_profile(user, form, current_user)
 
 
-def _show_public_profile(user):
+def _show_public_profile(user, form):
     user_dict = cached_users.public_get_user_summary(user.name)
     projects_contributed = cached_users.public_projects_contributed_cached(user.id)
     projects_created = cached_users.public_published_projects_cached(user.id)
 
-    if current_user.is_authenticated() and current_user.admin:
+    can_update = False
+
+    if (user.restrict is False and
+        current_user.is_authenticated() and
+            current_user.admin):
         draft_projects = cached_users.draft_projects(user.id)
         projects_created.extend(draft_projects)
-    title = "%s &middot; User Profile" % user_dict['fullname']
+        can_update = True
 
+    if user.restrict is False:
+        title = "%s &middot; User Profile" % user_dict['fullname']
+    else:
+        title = "User data is restricted"
+        projects_contributed = []
+        projects_created = []
+        form = None
     response = dict(template='/account/public_profile.html',
                     title=title,
                     user=user_dict,
                     projects=projects_contributed,
-                    projects_created=projects_created)
+                    projects_created=projects_created,
+                    form=form,
+                    can_update=can_update,
+                    input_form=False)
 
     return handle_content_type(response)
 
 
-def _show_own_profile(user):
-    user_dict = cached_users.get_user_summary(user.name)
+def _show_own_profile(user, form, current_user):
+    user_dict = cached_users.get_user_summary(user.name, current_user)
     rank_and_score = cached_users.rank_and_score(user.id)
     user.rank = rank_and_score['rank']
     user.score = rank_and_score['score']
@@ -459,11 +510,14 @@ def _show_own_profile(user):
     projects_published, projects_draft = _get_user_projects(user.id)
     cached_users.get_user_summary(user.name)
 
-    response = dict(template='account/profile.html', title=gettext("Profile"),
+    response = dict(template='account/profile.html',
+                    title=gettext("Profile"),
+                    user=user_dict,
                     projects_contrib=projects_contributed,
                     projects_published=projects_published,
                     projects_draft=projects_draft,
-                    user=user_dict)
+                    form=form,
+                    can_update=True)
 
     return handle_content_type(response)
 
@@ -516,7 +570,7 @@ def update_profile(name):
     show_passwd_form = True
     if user.twitter_user_id or user.google_user_id or user.facebook_user_id:
         show_passwd_form = False
-    usr = cached_users.get_user_summary(name)
+    usr = cached_users.get_user_summary(name, current_user)
     # Extend the values
     user.rank = usr.get('rank')
     user.score = usr.get('score')
@@ -634,6 +688,7 @@ def _handle_profile_update(user, update_form):
         if acc_conf_dis:
             user.email_addr = update_form.email_addr.data
         user.privacy_mode = fuzzyboolean(update_form.privacy_mode.data)
+        user.restrict = fuzzyboolean(update_form.restrict.data)
         user.locale = update_form.locale.data
         user.subscribed = fuzzyboolean(update_form.subscribed.data)
         user_repo.update(user)
@@ -778,6 +833,29 @@ def forgot_password():
     return handle_content_type(data)
 
 
+@blueprint.route('/<name>/export')
+@login_required
+def start_export(name):
+    """
+    Starts a export of all user data according to EU GDPR
+
+    Data will be available on GET /export after it is processed
+
+    """
+    user = user_repo.get_by_name(name)
+    if not user:
+        return abort(404)
+    if user.id != current_user.id:
+        return abort(403)
+
+    ensure_authorized_to('update', user)
+    export_queue.enqueue(export_userdata,
+                         user_id=user.id)
+    msg = gettext('GDPR export started')
+    flash(msg, 'success')
+    return redirect_content_type(url_for('account.profile', name=name))
+
+
 @blueprint.route('/<name>/resetapikey', methods=['GET', 'POST'])
 @login_required
 def reset_api_key(name):
@@ -801,3 +879,86 @@ def reset_api_key(name):
     else:
         csrf = dict(form=dict(csrf=generate_csrf()))
         return jsonify(csrf)
+
+
+@blueprint.route('/<name>/delete')
+@login_required
+def delete(name):
+    """
+    Delete user account.
+    """
+    user = user_repo.get_by_name(name)
+    if not user:
+        return abort(404)
+    if current_user.name != name:
+        return abort(403)
+
+    super_queue.enqueue(delete_account, user.id)
+
+    if (request.headers.get('Content-Type') == 'application/json' or
+        request.args.get('response_format') == 'json'):
+
+        response = dict(job='enqueued', template='account/delete.html')
+        return handle_content_type(response)
+    else:
+        return redirect(url_for('account.signout'))
+
+
+@blueprint.route('/save_metadata/<name>', methods=['POST'])
+@login_required
+def add_metadata(name):
+    """
+    Admin can save metadata for selected user
+    Redirects to public profile page for selected user.
+    """
+    user = user_repo.get_by_name(name=name)
+    form = UserPrefMetadataForm(request.form)
+    form.set_upref_mdata_choices()
+    if not form.validate():
+        if current_user.id == user.id:
+            user_dict = cached_users.get_user_summary(user.name)
+        else:
+            user_dict = cached_users.public_get_user_summary(user.name)
+        projects_contributed = cached_users.projects_contributed_cached(user.id)
+        projects_created = cached_users.published_projects_cached(user.id)
+        if current_user.is_authenticated() and current_user.admin:
+            draft_projects = cached_users.draft_projects(user.id)
+            projects_created.extend(draft_projects)
+        title = "%s &middot; User Profile" % user.name
+        flash("Please fix the errors", 'message')
+        can_update = current_user.admin
+        return render_template('/account/public_profile.html',
+                               title=title,
+                               user=user_dict,
+                               projects=projects_contributed,
+                               projects_created=projects_created,
+                               form=form,
+                               can_update=can_update,
+                               input_form=True)
+
+    user_pref, metadata = get_user_pref_and_metadata(name, form)
+    user.info['metadata'] = metadata
+    user.user_pref = user_pref
+    user_repo.update(user)
+    cached_users.delete_user_pref_metadata(user.name)
+    flash("Input saved successfully", "info")
+    return redirect(url_for('account.profile', name=name))
+
+
+def get_user_pref_and_metadata(user_name, form):
+    user_pref = {}
+    metadata = {}
+    if not any(value for value in form.data.values()):
+        return user_pref, metadata
+
+    if form.validate():
+        admin = user_name if current_user.is_anonymous() else current_user.name
+        metadata = dict(admin=admin, time_stamp=time.ctime(),
+                        user_type=form.user_type.data, work_hours_from=form.work_hours_from.data,
+                        work_hours_to=form.work_hours_to.data, review=form.review.data,
+                        timezone=form.timezone.data, profile_name=user_name)
+        if form.languages.data:
+            user_pref['languages'] = form.languages.data
+        if form.locations.data:
+            user_pref['locations'] = form.locations.data
+        return user_pref, metadata

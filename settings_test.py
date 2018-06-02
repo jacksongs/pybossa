@@ -1,6 +1,8 @@
 # -*- coding: utf8 -*-
 SERVER_NAME='localhost'
+PREFERRED_URL_SCHEME='https'
 # THEME='crowdcrafting-theme'
+CRYPTOPAN_KEY = '32-char-str-for-AES-key-and-pad.'
 SECRET = 'foobar'
 SECRET_KEY = 'my-session-secret'
 SQLALCHEMY_DATABASE_TEST_URI = 'postgresql://rtester:rtester@localhost/pybossa_test'
