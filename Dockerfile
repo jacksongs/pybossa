@@ -35,11 +35,11 @@ RUN set -x && \
 
 # I got this error: ImportError: C extension: umpy.core.multiarray failed to import not built.
 # it required a numpy/pandas uninstall/install
-RUN set -x && \
-    pip uninstall -y numpy && \
-    pip uninstall -y pandas && \
-    pip install numpy && \
-    pip install pandas
+#RUN set -x && \
+#    pip uninstall -y numpy && \
+#    pip uninstall -y pandas && \
+#    pip install numpy && \
+#    pip install pandas
 
 RUN echo a!!
 
