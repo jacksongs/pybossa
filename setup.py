@@ -10,6 +10,7 @@ requirements = [
     "misaka>=1.0.0, <2.0.0",
     "Flask-Misaka>=0.2.0, <0.4.0",
     "Flask-OAuthlib>=0.9.1, <0.9.2",
+    "oauthlib>=2.1.0,<2.1.1",
     "Flask-SQLAlchemy>=2.0, <2.1",
     "Flask-WTF>=0.9.5, <0.9.6",         # was pinned to Flask-WTF==0.9.5
     "Flask>=0.10.1, <0.10.2",           # was pinned to Flask==0.10.1
